@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      OPENBLAS_NUM_THREADS: "1"
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - run: uv pip install --reinstall --no-deps dist/*.whl
+      - if: matrix.python-version == '3.10'
+        run: uv pip install 'numpy==1.24.0' 'scipy==1.10.0' 'scikit-learn==1.6.0'
+      - run: uv run --no-sync pytest

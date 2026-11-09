@@ -1,0 +1,493 @@
+"""Robust scale, skewness and their numerical calculations."""
+
+import numpy as np
+from scipy import optimize, special
+from scipy.stats import chi2, norm
+
+from ._validation import as_1d, check_range
+
+__all__ = ["lmc", "m_scale", "mad", "medcouple", "pn", "qn", "rmc", "sn", "tau_scale"]
+
+
+MAD_CONSTANT = 1 / norm.ppf(0.75)
+
+
+# MAD factors for n = 2, ..., 9; Croux & Rousseeuw (1992).
+_MAD_N = (1.196, 1.495, 1.363, 1.206, 1.200, 1.140, 1.129, 1.107)
+
+
+def mad(x, *, center=None, consistency=True, finite_correction=False):
+    """Median absolute deviation, ``1.4826 * med|x - center|``.
+
+    ``finite_correction`` (off by default) removes the
+    small-sample bias (-17% at n = 5).
+    """
+    x = as_1d(x)
+    if center is not None:
+        check_range("center", center, -np.inf, np.inf)
+    if x.size < 2:
+        return _trivial_scale(x)
+    if center is None:
+        center = np.median(x)
+    value = np.median(np.abs(x - center))
+    if consistency:
+        value *= MAD_CONSTANT
+    if finite_correction:
+        value *= _mad_factor(x.size)
+    return float(value)
+
+
+def _mad_factor(n):
+    return _MAD_N[n - 2] if n <= 9 else n / (n - 0.8)
+
+
+QN_CONSTANT = 1 / (np.sqrt(2) * norm.ppf(5 / 8))
+
+
+_QN_N = (
+    0.399356,
+    0.99365,
+    0.51321,
+    0.84401,
+    0.6122,
+    0.85877,
+    0.66993,
+    0.87344,
+    0.72014,
+    0.88906,
+    0.75743,
+)
+
+
+def qn(x, *, consistency=True, finite_correction=True):
+    """Qn of Rousseeuw & Croux (1993): k-th smallest ``|x_i - x_j|``, ``k = C(n//2 + 1, 2)``.
+
+    Breakdown 50%, Gaussian efficiency 82%. Exact in O(n log n).
+    """
+    x = np.sort(as_1d(x))
+    if x.size < 2:
+        return _trivial_scale(x)
+    h = x.size // 2 + 1
+    rank = h * (h - 1) // 2
+    first, last = _pairwise_rows(x.size)
+    value = _kth_smallest(lambda i, j: x[j] - x[i], first, last, rank)
+    if consistency:
+        value *= QN_CONSTANT
+    if finite_correction:
+        value *= _qn_factor(x.size)
+    return float(value)
+
+
+def _qn_factor(n):
+    if n <= 12:
+        return _QN_N[n - 2]
+    if n % 2:
+        correction = -2.1284 - 5.172 / n
+        correction = 1.60188 + correction / n
+    else:
+        correction = 6.987 - 77 / n
+        correction = 1.9654 + correction / n
+        correction = 3.67561 + correction / n
+    return 1 / (1 + correction / n)
+
+
+SN_CONSTANT = 1.1925985531232086
+
+
+# Sn factors for n = 2, ..., 9; Croux & Rousseeuw (1992).
+_SN_N = (0.743, 1.851, 0.954, 1.351, 0.993, 1.198, 1.005, 1.131)
+
+
+def sn(x, *, consistency=True, finite_correction=True):
+    """Sn of Rousseeuw & Croux (1993): ``lomed_i himed_j |x_i - x_j|``.
+
+    Breakdown 50%, Gaussian efficiency 58%. Exact in O(n log n).
+    """
+    x = np.sort(as_1d(x))
+    if x.size < 2:
+        return _trivial_scale(x)
+    distances = np.sort(_himed_distances(x))
+    lower_middle = (x.size + 1) // 2 - 1
+    value = distances[lower_middle]
+    if consistency:
+        value *= SN_CONSTANT
+    if finite_correction:
+        value *= _sn_factor(x.size)
+    return float(value)
+
+
+def _sn_factor(n):
+    if n <= 9:
+        return _SN_N[n - 2]
+    return n / (n - 0.9) if n % 2 else 1.0
+
+
+def _himed_distances(x):
+    """For sorted x and every i, the ``(n//2 + 1)``-th smallest ``|x_i - x_j|`` over j.
+
+    The zero self-distance comes first, so this is the ``n//2``-th smallest of the
+    merged sorted lists ``left[a] = x_i - x_(i-1-a)`` and ``right[b] = x_(i+1+b) - x_i``;
+    a vectorized binary search finds how many come from the left list.
+    """
+    n, k = x.size, x.size // 2
+    i = np.arange(n)
+
+    def left(a):  # +inf past the end
+        indices = np.clip(i - 1 - a, 0, n - 1)
+        distances = x[i] - x[indices]
+        return np.where(a < i, distances, np.inf)
+
+    def right(b):  # -inf before the start
+        indices = np.clip(i + 1 + b, 0, n - 1)
+        distances = x[indices] - x[i]
+        return np.where(b >= 0, distances, -np.inf)
+
+    lo, hi = np.maximum(0, k - (n - 1 - i)), np.minimum(k, i)
+    while np.any(lo < hi):
+        active = lo < hi
+        mid = (lo + hi) // 2
+        more = left(mid) < right(k - mid - 1)
+        lo[active & more] = mid[active & more] + 1
+        hi[active & ~more] = mid[active & ~more]
+    last_left = np.where(lo > 0, left(lo - 1), -np.inf)
+    last_right = right(k - lo - 1)
+    return np.maximum(last_left, last_right)
+
+
+PN_CONSTANT = 1 / (np.sqrt(2) * norm.ppf(0.75))
+
+
+# Tarr (2014), Appendix B.3, p. 148: factors for n = 3, ..., 40.
+# https://www.researchgate.net/publication/267927753
+_PN_N = (
+    1.128,
+    1.303,
+    1.109,
+    1.064,
+    1.166,
+    1.103,
+    1.087,
+    1.105,
+    1.047,
+    1.063,
+    1.057,
+    1.040,
+    1.061,
+    1.047,
+    1.043,
+    1.048,
+    1.031,
+    1.037,
+    1.035,
+    1.028,
+    1.036,
+    1.030,
+    1.029,
+    1.032,
+    1.023,
+    1.025,
+    1.024,
+    1.021,
+    1.026,
+    1.022,
+    1.021,
+    1.023,
+    1.018,
+    1.020,
+    1.019,
+    1.017,
+    1.020,
+    1.018,
+)
+
+
+def pn(x, *, consistency=True, finite_correction=True):
+    """Pn of Tarr, Müller & Weber (2012): interquartile range of the pairwise means.
+
+    ``Pn = 1.0484 * [H^-1(3/4) - H^-1(1/4)]``, H the empirical cdf of
+    ``(x_i + x_j)/2, i < j``. Breakdown 13.4%, Gaussian efficiency 86%.
+    Finite-sample factors follow Tarr (2014), Appendix B.3; disable them with
+    ``finite_correction=False``. One or two observations give zero scale.
+    """
+    x = np.sort(as_1d(x))
+    if x.size < 3:
+        return _trivial_scale(x)
+    q1 = _pairwise_quantile(x, 0.25)
+    q3 = _pairwise_quantile(x, 0.75)
+    value = q3 - q1
+    if consistency:
+        value *= PN_CONSTANT
+    if finite_correction:
+        value *= _pn_factor(x.size)
+    return float(value)
+
+
+def _pn_factor(n):
+    if n <= 40:
+        return _PN_N[n - 3]
+    return n / (n - 0.7)
+
+
+def tau_scale(x, *, c1=4.5, c2=3.0, consistency=True):
+    """Tau scale of Yohai & Zamar (1988).
+
+    ``s0 * sqrt(mean(min(((x - mu) / s0)^2, c2^2)) / E)`` with ``s0`` the raw MAD
+    and ``mu`` the tau location.
+    """
+    x = as_1d(x)
+    check_range("c1", c1, 0, np.inf, low_open=True)
+    check_range("c2", c2, 0, np.inf, low_open=True)
+    if x.size < 2:
+        return _trivial_scale(x)
+    location, s0 = _tau_estimates(x, c1)
+    if s0 == 0:
+        return 0.0
+    residuals = (x - location) / s0
+    clipped_squares = np.minimum(residuals**2, c2**2)
+    mean_square = clipped_squares.mean()
+    if consistency:
+        mean_square /= _e_trunc_square(c2 * norm.ppf(0.75))
+    return float(s0 * np.sqrt(mean_square))
+
+
+def _tau_estimates(x, c):
+    """Return the tau location and raw MAD of a nonempty, finite sample."""
+    center = np.median(x)
+    raw_mad = np.median(np.abs(x - center))
+    if raw_mad == 0:
+        return float(center), 0.0
+    residuals = (x - center) / raw_mad
+    weights = _bisquare_weights(residuals, c)
+    total = weights.sum()
+    if total == 0:
+        return float(center), float(raw_mad)
+    location = np.dot(weights, x) / total
+    return float(location), float(raw_mad)
+
+
+def _e_trunc_square(b):
+    """E[min(Z^2, b^2)] for Z ~ N(0, 1)."""
+    return 2 * norm.cdf(b) - 1 - 2 * b * norm.pdf(b) + 2 * b * b * norm.sf(b)
+
+
+def m_scale(x, *, center=None, breakdown=0.5):
+    """Bisquare M-scale: solves ``mean(rho((x - center) / s)) = breakdown``.
+
+    Consistent at the normal model; the scale used by S-estimators.
+    ``center`` defaults to the median (pass 0 for residuals).
+    """
+    x = as_1d(x)
+    check_range("breakdown", breakdown, 0, 0.5, low_open=True)
+    if center is not None:
+        check_range("center", center, -np.inf, np.inf)
+    if x.size < 2:
+        return _trivial_scale(x)
+    center = np.median(x) if center is None else center
+    residuals = x - center
+    tuning = _tuning_for_breakdown(breakdown)
+    return _mscale_bisquare(residuals, tuning, breakdown)
+
+
+def _mscale_bisquare(residuals, c, breakdown, s0=None, tol=1e-10, max_iter=200):
+    """Solve mean(rho(residuals / scale)) = breakdown by fixed-point iteration."""
+    residuals = np.abs(residuals)
+    positive = residuals[residuals > 0]
+    if positive.size <= breakdown * residuals.size:
+        return 0.0
+    scale = np.median(residuals) / 0.6745 if s0 is None else s0
+    if scale <= 0:
+        scale = np.median(positive) / 0.6745
+    for _ in range(max_iter):
+        if scale <= 0:
+            return 0.0
+        average_loss = np.mean(_rho(residuals / scale, c))
+        updated = scale * np.sqrt(average_loss / breakdown)
+        if abs(updated - scale) <= tol * scale:
+            return float(updated)
+        scale = updated
+    return float(scale)
+
+
+def _rho(t, c):
+    """Tukey's bisquare loss, normalized to rho(infinity) = 1."""
+    squared = (t / c) ** 2
+    clipped = np.minimum(squared, 1)
+    return 1 - (1 - clipped) ** 3
+
+
+def _bisquare_weights(t, c):
+    """``psi(t) / t`` up to a constant."""
+    u = (t / c) ** 2
+    return np.where(u < 1, (1 - u) ** 2, 0.0)
+
+
+def _expected_rho(c, p=1):
+    """``E[rho_c(||Z||)]`` for ``Z ~ N_p(0, I)``."""
+    t = c * c
+    m1 = p * chi2.cdf(t, p + 2)
+    m2 = p * (p + 2) * chi2.cdf(t, p + 4)
+    m3 = p * (p + 2) * (p + 4) * chi2.cdf(t, p + 6)
+    return 3 * m1 / t - 3 * m2 / t**2 + m3 / t**3 + chi2.sf(t, p)
+
+
+def _tuning_for_breakdown(breakdown=0.5, p=1):
+    """``c`` with ``E[rho_c] = breakdown``: consistent scale with that breakdown point."""
+    check_range("breakdown", breakdown, 0, 0.5, low_open=True)
+    return optimize.brentq(lambda c: _expected_rho(c, p) - breakdown, 1e-3, 1e3, xtol=1e-14)
+
+
+def _shape_efficiency(c, p):
+    """Gaussian efficiency of the bisquare M-estimator of shape (Tyler 1982).
+
+    ``1 / sigma1``, ``sigma1 = p(p+2) E[psi^2 d^2] / E[psi' d^2 + (p+1) psi d]^2``
+    with ``psi(d) = d (1 - (d/c)^2)^2`` and ``d = ||Z||``.
+    """
+
+    def m(a):  # E[d^a; d <= c]
+        g = np.exp(special.gammaln((p + a) / 2) - special.gammaln(p / 2))
+        return g * 2 ** (a / 2) * chi2.cdf(c * c, p + a)
+
+    psi2_d2 = m(4) - 4 * m(6) / c**2 + 6 * m(8) / c**4 - 4 * m(10) / c**6 + m(12) / c**8
+    dpsi_d2 = m(2) - 6 * m(4) / c**2 + 5 * m(6) / c**4
+    psi_d = m(2) - 2 * m(4) / c**2 + m(6) / c**4
+    return (dpsi_d2 + (p + 1) * psi_d) ** 2 / (p * (p + 2) * psi2_d2)
+
+
+def _tuning_for_shape_efficiency(efficiency, p):
+    check_range("efficiency", efficiency, 0, 1, low_open=True, high_open=True)
+    return optimize.brentq(lambda c: _shape_efficiency(c, p) - efficiency, 0.5, 1e3, xtol=1e-12)
+
+
+def medcouple(x):
+    """Medcouple of Brys, Hubert & Struyf (2004), a robust skewness measure in [-1, 1].
+
+    Median of ``((x_i - m) - (m - x_j)) / (x_i - x_j)`` over ``x_i >= m >= x_j``,
+    with the paper's kernel for ties at the median ``m``. Breakdown 25%.
+    Exact in O(n log n); ``medcouple(-x) == -medcouple(x)`` and constant data give 0.
+    """
+    x = np.sort(as_1d(x))
+    if x.size == 0:
+        return np.nan
+    center = np.median(x)
+    upper = x[x >= center] - center
+    lower = x[x <= center] - center
+
+    def kernel(i, j):
+        tie = (upper[i] == 0) & (lower[j] == 0)
+        denominator = np.where(tie, 1, upper[i] - lower[j])
+        ratio = (upper[i] + lower[j]) / denominator
+        tie_value = np.sign(i + j - lower.size + 1)
+        return np.where(tie, tie_value, ratio)
+
+    first = np.zeros(upper.size, dtype=int)
+    last = np.full(upper.size, lower.size - 1)
+    return _matrix_median(kernel, first, last)
+
+
+def lmc(x):
+    """Left medcouple ``-MC(x[x <= median])``, a left tail-weight measure (Brys et al. 2006)."""
+    x = as_1d(x)
+    if x.size == 0:
+        return np.nan
+    return -medcouple(x[x <= np.median(x)])
+
+
+def rmc(x):
+    """Right medcouple ``MC(x[x >= median])``, a right tail-weight measure (Brys et al. 2006)."""
+    x = as_1d(x)
+    if x.size == 0:
+        return np.nan
+    return medcouple(x[x >= np.median(x)])
+
+
+def _trivial_scale(x):
+    """Scale of fewer than two values: NaN if empty, else 0."""
+    return np.nan if x.size == 0 else 0.0
+
+
+# Select pairwise values without allocating the full n-by-n matrix.
+_DIRECT_LIMIT = 50_000
+
+
+def _pairwise_rows(n, diagonal=False):
+    """Inclusive column bounds for pairs i < j, or i <= j with the diagonal."""
+    row_count = n if diagonal else n - 1
+    first = np.arange(row_count)
+    if not diagonal:
+        first += 1
+    last = np.full(row_count, n - 1)
+    return first, last
+
+
+def _pairwise_quantile(x, probability, diagonal=False):
+    """Inverse empirical CDF of (x[i] + x[j]) / 2 for sorted x."""
+    first, last = _pairwise_rows(x.size, diagonal)
+    count = int(np.sum(last - first + 1))
+    rank = int(np.ceil(probability * count))
+    return _kth_smallest(lambda i, j: (x[i] + x[j]) / 2, first, last, rank)
+
+
+def _matrix_median(value, first, last):
+    """Median of an implicit sorted-row matrix, averaging the two middle values."""
+    count = int(np.sum(last - first + 1))
+    rank = (count + 1) // 2
+    lower = _kth_smallest(value, first, last, rank)
+    if count % 2:
+        return lower
+    upper = _kth_smallest(value, first, last, rank + 1)
+    return float((lower + upper) / 2)
+
+
+def _kth_smallest(value, lo, hi, k):
+    """Select rank k (1-based) from value(i, j), with lo[i] <= j <= hi[i]."""
+    lo = np.array(lo, copy=True)
+    hi = np.array(hi, copy=True)
+    while True:
+        sizes = np.maximum(hi - lo + 1, 0)
+        if sizes.sum() <= max(_DIRECT_LIMIT, 4 * lo.size):
+            return _direct(value, lo, sizes, k)
+        rows = np.flatnonzero(sizes)
+        midpoints = (lo[rows] + hi[rows]) // 2
+        trial = _weighted_median(value(rows, midpoints), sizes[rows])
+        below = _count(value, rows, lo[rows], hi[rows], trial, strict=True)
+        through = _count(value, rows, lo[rows], hi[rows], trial, strict=False)
+        if k <= below.sum():
+            hi[rows] = lo[rows] + below - 1
+        elif k > through.sum():
+            k -= through.sum()
+            lo[rows] += through
+        else:
+            return float(trial)
+
+
+def _direct(value, first, sizes, rank):
+    """Expand only the remaining candidates and select their order statistic."""
+    rows = np.repeat(np.arange(first.size), sizes)
+    row_offsets = np.cumsum(sizes) - sizes
+    offsets = np.arange(rows.size) - np.repeat(row_offsets, sizes)
+    columns = np.repeat(first, sizes) + offsets
+    candidates = value(rows, columns)
+    return float(np.partition(candidates, rank - 1)[rank - 1])
+
+
+def _weighted_median(values, weights):
+    order = np.argsort(values)
+    cumulative = np.cumsum(weights[order])
+    middle = np.searchsorted(cumulative, cumulative[-1] / 2)
+    return values[order[middle]]
+
+
+def _count(value, rows, lo, hi, trial, strict):
+    """Count entries below trial in each row, including ties if strict is False."""
+    left = lo.copy()
+    right = hi + 1
+    while np.any(left < right):
+        active = left < right
+        middle = np.minimum((left + right) // 2, hi)
+        values = value(rows, middle)
+        below = values < trial if strict else values <= trial
+        move_left = active & below
+        move_right = active & ~below
+        left[move_left] = middle[move_left] + 1
+        right[move_right] = middle[move_right]
+    return left - lo
