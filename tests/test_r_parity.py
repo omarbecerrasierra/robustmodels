@@ -1,6 +1,7 @@
 """Numerical comparisons with robustbase and rrcov.
 
-Reference values: tests/data/r_reference.json, made by tools/r_reference.R.
+Reference values: tests/data/r_reference.json; its "meta" entry records the R,
+robustbase and rrcov versions that produced them.
 Known differences: R rounds the consistency constants (e.g. 2.21914 for Qn),
 uses tolerance 1e-6 in huberM and an approximate medcouple.
 """

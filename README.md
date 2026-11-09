@@ -1,16 +1,18 @@
 # robustmodels
 
-Robust location, scale and covariance estimators for Python. Early development.
+[![PyPI](https://img.shields.io/pypi/v/robustmodels)](https://pypi.org/project/robustmodels/)
+[![CI](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml/badge.svg)](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml)
 
-Requires Python 3.10+, NumPy, SciPy and scikit-learn.
+Robust location, scale and covariance estimators for Python. Early development:
+the API may change before version 1.0.
 
 ## Install
 
-From a local checkout:
-
 ```bash
-pip install .
+pip install robustmodels
 ```
+
+Requires Python 3.10+, NumPy, SciPy and scikit-learn.
 
 ## Use
 
@@ -41,9 +43,14 @@ model.support_  # observations kept after reweighting
 
 ## Estimators
 
-- `location`: Hodges–Lehmann, M-location, tau location, trimmed and winsorized means.
-- `scale`: MAD, Qn, Sn, Pn, tau scale, M-scale and medcouple.
-- `covariance`: MCD, MRCD, MVE, OGK, S and MM.
+| Module | Contents |
+| --- | --- |
+| `robustmodels.location` | `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean` |
+| `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`; skewness and tail weight: `medcouple`, `lmc`, `rmc` |
+| `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator`; correction factors: `h_alpha_n`, `mcd_consistency`, `mcd_small_sample` |
+
+Each docstring states the definition and its reference; see for example
+`help(robustmodels.scale.qn)`.
 
 Univariate functions accept finite, one-dimensional samples. Empty samples return
 `NaN`. A single observation has zero scale. Covariance estimators accept matrices
@@ -74,7 +81,8 @@ uvx twine check --strict dist/*
 CI runs the tests against the installed wheel on Python 3.10, 3.13 and 3.14.
 The Python 3.10 job uses the minimum supported NumPy, SciPy and scikit-learn versions.
 
-The tests cover estimator definitions, statistical properties, edge cases and
+The tests cover estimator definitions, statistical properties, edge cases,
+agreement with R's robustbase and rrcov, and
 [scikit-learn compatibility](https://scikit-learn.org/stable/developers/develop.html).
 
 Code lives in `src/robustmodels`:
@@ -89,8 +97,15 @@ Code lives in `src/robustmodels`:
 Each method and its steps stay together. Auditing an estimator requires its file
 and at most two supporting files. `__init__.py` exposes the three public modules.
 
-Mathematical definitions and paper references are kept beside each implementation.
+### Release
+
+1. Set `version` in `pyproject.toml`, run `uv lock`, and replace "unreleased"
+   in [CHANGELOG.md](https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md)
+   with the date.
+2. Merge into `main`, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
+3. CI tests, builds and, after approval of the `pypi` environment, publishes to
+   PyPI through trusted publishing. The tag must match the package version.
 
 ## License
 
-BSD 3-Clause.
+BSD 3-Clause; see [LICENSE](https://github.com/omarbecerrasierra/robustmodels/blob/main/LICENSE).

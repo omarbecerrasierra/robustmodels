@@ -2,15 +2,15 @@
 
 ## 0.1.0 (unreleased)
 
-- Handle a zero starting MAD in M-scale and degenerate MRCD subsets explicitly.
-- Check the source distribution, wheel metadata and installed package in CI.
-- Add Tarr's finite-sample correction for Pn, enabled by default; use
-  `finite_correction=False` for the previous result.
-- Keep location, scale and covariance in three modules, with estimator steps and
-  correction factors beside their implementations. Only input validation is separate.
-- Validate tuning parameters and iteration counts; handle zero bisquare weights.
-- Reject full coverage in MVE, where the scale correction is undefined.
-- Remove the typing marker until the package provides type annotations.
+First release.
+
 - `scale`: `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc`.
+  Qn, Sn and Pn apply finite-sample corrections by default (Pn: Tarr 2014,
+  Appendix B.3); pass `finite_correction=False` to disable them.
 - `location`: `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean`.
-- `covariance`: `MCD` (FAST-MCD and DetMCD), `MVE`, `OGK`, `SEstimator`, `MMEstimator`, `MRCD`.
+- `covariance`: `MCD` (FAST-MCD and DetMCD), `MRCD`, `MVE`, `OGK`, `SEstimator`,
+  `MMEstimator`, with the scikit-learn estimator interface.
+- Input and tuning parameters are validated; invalid values raise `ValueError`
+  naming the parameter.
+- CI tests the installed wheel on Python 3.10, 3.13 and 3.14 and publishes
+  tagged releases to PyPI with trusted publishing.
