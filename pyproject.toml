@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robustmodels"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Robust statistics for Python: univariate location and scale, multivariate location and scatter."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -23,18 +23,27 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
 [project.urls]
-Source = "https://github.com/omarbecerrasierra/robustmodels"
+Homepage = "https://github.com/omarbecerrasierra/robustmodels"
+Documentation = "https://github.com/omarbecerrasierra/robustmodels#readme"
+Repository = "https://github.com/omarbecerrasierra/robustmodels"
 Issues = "https://github.com/omarbecerrasierra/robustmodels/issues"
+Changelog = "https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/robustmodels", "tests", "tools", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["src/robustmodels", "tests", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
