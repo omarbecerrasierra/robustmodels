@@ -1,4 +1,9 @@
-"""Robust scale, skewness and their numerical calculations."""
+"""Robust scale, skewness and their numerical calculations.
+
+Every public function takes a one-dimensional sample of finite values and
+returns a float. An empty sample gives ``nan`` and a single observation has
+zero scale.
+"""
 
 import numpy as np
 from scipy import optimize, special
@@ -17,10 +22,43 @@ _MAD_N = (1.196, 1.495, 1.363, 1.206, 1.200, 1.140, 1.129, 1.107)
 
 
 def mad(x, *, center=None, consistency=True, finite_correction=False):
-    """Median absolute deviation, ``1.4826 * med|x - center|``.
+    """Median absolute deviation, ``1.4826 * med|x_i - center|``.
 
-    ``finite_correction`` (off by default) removes the
-    small-sample bias (-17% at n = 5).
+    Breakdown point 50%, Gaussian efficiency 37%.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+    center : float, optional
+        Center of the deviations. Defaults to the sample median.
+    consistency : bool, default True
+        Multiply by ``1 / Phi^-1(3/4) = 1.4826``, so that the MAD estimates the
+        standard deviation at the normal model.
+    finite_correction : bool, default False
+        Multiply by the small-sample factors of Croux & Rousseeuw (1992). Without
+        them the MAD underestimates the normal standard deviation by 17% at n = 5.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample, 0 for a single observation.
+
+    References
+    ----------
+    Hampel, F. R. (1974). The influence curve and its role in robust estimation.
+    *Journal of the American Statistical Association*, 69(346), 383-393.
+
+    Croux, C. and Rousseeuw, P. J. (1992). Time-efficient algorithms for two
+    highly robust estimators of scale. *Computational Statistics*, 1, 411-428.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import mad
+    >>> round(mad([1, 2, 2, 3, 4, 100]), 4)
+    1.4826
+    >>> mad([1, 2, 2, 3, 4, 100], consistency=False)
+    1.0
     """
     x = as_1d(x)
     if center is not None:
@@ -60,9 +98,38 @@ _QN_N = (
 
 
 def qn(x, *, consistency=True, finite_correction=True):
-    """Qn of Rousseeuw & Croux (1993): k-th smallest ``|x_i - x_j|``, ``k = C(n//2 + 1, 2)``.
+    """Qn scale estimator of Rousseeuw & Croux (1993).
 
-    Breakdown 50%, Gaussian efficiency 82%. Exact in O(n log n).
+    The ``k``-th smallest of the distances ``|x_i - x_j|``, ``i < j``, with
+    ``k = h(h - 1) / 2`` and ``h = n // 2 + 1``. Breakdown point 50%, Gaussian
+    efficiency 82%. Computed exactly in O(n log n) time, without forming all pairs.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+    consistency : bool, default True
+        Multiply by ``1 / (sqrt(2) * Phi^-1(5/8)) = 2.2191``, so that Qn estimates
+        the standard deviation at the normal model.
+    finite_correction : bool, default True
+        Multiply by the small-sample factors used by R's robustbase, which make Qn
+        unbiased at the normal model for small ``n``.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample, 0 for a single observation.
+
+    References
+    ----------
+    Rousseeuw, P. J. and Croux, C. (1993). Alternatives to the median absolute
+    deviation. *Journal of the American Statistical Association*, 88(424), 1273-1283.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import qn
+    >>> round(qn([1, 2, 2, 3, 4, 100]), 4)
+    1.3586
     """
     x = np.sort(as_1d(x))
     if x.size < 2:
@@ -99,9 +166,41 @@ _SN_N = (0.743, 1.851, 0.954, 1.351, 0.993, 1.198, 1.005, 1.131)
 
 
 def sn(x, *, consistency=True, finite_correction=True):
-    """Sn of Rousseeuw & Croux (1993): ``lomed_i himed_j |x_i - x_j|``.
+    """Sn scale estimator of Rousseeuw & Croux (1993).
 
-    Breakdown 50%, Gaussian efficiency 58%. Exact in O(n log n).
+    ``lomed_i himed_j |x_i - x_j|``: for each observation, the high median of its
+    distances to all observations; then the low median of these values.
+    Breakdown point 50%, Gaussian efficiency 58%. Computed exactly in
+    O(n log n) time.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+    consistency : bool, default True
+        Multiply by 1.1926, so that Sn estimates the standard deviation at the
+        normal model.
+    finite_correction : bool, default True
+        Multiply by the small-sample factors of Croux & Rousseeuw (1992).
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample, 0 for a single observation.
+
+    References
+    ----------
+    Rousseeuw, P. J. and Croux, C. (1993). Alternatives to the median absolute
+    deviation. *Journal of the American Statistical Association*, 88(424), 1273-1283.
+
+    Croux, C. and Rousseeuw, P. J. (1992). Time-efficient algorithms for two
+    highly robust estimators of scale. *Computational Statistics*, 1, 411-428.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import sn
+    >>> round(sn([1, 2, 2, 3, 4, 100]), 4)
+    1.1843
     """
     x = np.sort(as_1d(x))
     if x.size < 2:
@@ -202,12 +301,44 @@ _PN_N = (
 
 
 def pn(x, *, consistency=True, finite_correction=True):
-    """Pn of Tarr, Müller & Weber (2012): interquartile range of the pairwise means.
+    """Pn scale estimator of Tarr, Müller & Weber (2012).
 
-    ``Pn = 1.0484 * [H^-1(3/4) - H^-1(1/4)]``, H the empirical cdf of
-    ``(x_i + x_j)/2, i < j``. Breakdown 13.4%, Gaussian efficiency 86%.
-    Finite-sample factors follow Tarr (2014), Appendix B.3; disable them with
-    ``finite_correction=False``. One or two observations give zero scale.
+    Interquartile range of the pairwise means: ``H^-1(3/4) - H^-1(1/4)`` with
+    ``H`` the empirical distribution of ``(x_i + x_j) / 2``, ``i < j``.
+    Breakdown point 13.4%, Gaussian efficiency 86%. Computed exactly in
+    O(n log n) time.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+    consistency : bool, default True
+        Multiply by ``1 / (sqrt(2) * Phi^-1(3/4)) = 1.0484``, so that Pn estimates
+        the standard deviation at the normal model.
+    finite_correction : bool, default True
+        Multiply by the factors of Tarr (2014), Appendix B.3, for ``n <= 40`` and
+        by ``n / (n - 0.7)`` for larger samples.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample, 0 for one or two observations.
+
+    References
+    ----------
+    Tarr, G., Müller, S. and Weber, N. C. (2012). A robust scale estimator based
+    on pairwise means. *Journal of Nonparametric Statistics*, 24(1), 187-199.
+
+    Tarr, G. (2014). *Quantile Based Estimation of Scale and Dependence*.
+    PhD thesis, University of Sydney.
+
+    Examples
+    --------
+    One outlier in six exceeds the breakdown point of Pn:
+
+    >>> from robustmodels.scale import pn
+    >>> round(pn([1, 2, 2, 3, 4, 100]), 4)
+    54.6572
     """
     x = np.sort(as_1d(x))
     if x.size < 3:
@@ -229,10 +360,43 @@ def _pn_factor(n):
 
 
 def tau_scale(x, *, c1=4.5, c2=3.0, consistency=True):
-    """Tau scale of Yohai & Zamar (1988).
+    """Tau scale of Yohai & Zamar (1988), in the form of Maronna & Zamar (2002).
 
-    ``s0 * sqrt(mean(min(((x - mu) / s0)^2, c2^2)) / E)`` with ``s0`` the raw MAD
-    and ``mu`` the tau location.
+    ``s0 * sqrt(mean(min(((x - mu) / s0)^2, c2^2)) / E)``, with ``s0`` the raw
+    (unscaled) MAD and ``mu`` the tau location
+    (:func:`robustmodels.location.tau_location`).
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+    c1 : float, default 4.5
+        Bisquare tuning constant of the location weights.
+    c2 : float, default 3.0
+        Truncation point of the standardized residuals.
+    consistency : bool, default True
+        Divide by ``E = E[min(Z^2, (c2 * Phi^-1(3/4))^2)]``, so that the result
+        estimates the standard deviation at the normal model.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample, 0 for a single observation or a zero MAD.
+
+    References
+    ----------
+    Yohai, V. J. and Zamar, R. H. (1988). High breakdown-point estimates of
+    regression by means of the minimization of an efficient scale. *Journal of
+    the American Statistical Association*, 83(402), 406-413.
+
+    Maronna, R. A. and Zamar, R. H. (2002). Robust estimates of location and
+    dispersion for high-dimensional datasets. *Technometrics*, 44(4), 307-317.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import tau_scale
+    >>> round(tau_scale([1, 2, 2, 3, 4, 100]), 4)
+    1.5998
     """
     x = as_1d(x)
     check_range("c1", c1, 0, np.inf, low_open=True)
@@ -271,10 +435,39 @@ def _e_trunc_square(b):
 
 
 def m_scale(x, *, center=None, breakdown=0.5):
-    """Bisquare M-scale: solves ``mean(rho((x - center) / s)) = breakdown``.
+    """Bisquare M-estimator of scale.
 
-    Consistent at the normal model; the scale used by S-estimators.
-    ``center`` defaults to the median (pass 0 for residuals).
+    Solves ``mean(rho((x_i - center) / s)) = breakdown`` for ``s``, with Tukey's
+    bisquare ``rho`` scaled to a maximum of 1. Its tuning constant makes ``s``
+    estimate the standard deviation at the normal model. This is the scale that
+    S-estimators minimize.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+    center : float, optional
+        Center of the residuals. Defaults to the sample median; pass 0 for
+        residuals that are already centered.
+    breakdown : float in (0, 0.5], default 0.5
+        Breakdown point, the right-hand side of the equation.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample. 0 for a single observation, or when at most a
+        fraction ``breakdown`` of the residuals is nonzero.
+
+    References
+    ----------
+    Maronna, R. A., Martin, R. D., Yohai, V. J. and Salibián-Barrera, M. (2019).
+    *Robust Statistics: Theory and Methods (with R)*, 2nd ed. Wiley.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import m_scale
+    >>> round(m_scale([1, 2, 2, 3, 4, 100]), 4)
+    1.5019
     """
     x = as_1d(x)
     check_range("breakdown", breakdown, 0, 0.5, low_open=True)
@@ -359,11 +552,34 @@ def _tuning_for_shape_efficiency(efficiency, p):
 
 
 def medcouple(x):
-    """Medcouple of Brys, Hubert & Struyf (2004), a robust skewness measure in [-1, 1].
+    """Medcouple, a robust measure of skewness (Brys, Hubert & Struyf 2004).
 
     Median of ``((x_i - m) - (m - x_j)) / (x_i - x_j)`` over ``x_i >= m >= x_j``,
-    with the paper's kernel for ties at the median ``m``. Breakdown 25%.
-    Exact in O(n log n); ``medcouple(-x) == -medcouple(x)`` and constant data give 0.
+    with ``m`` the sample median and the paper's kernel for ties at ``m``.
+    Lies in [-1, 1]: positive for right skew, 0 for symmetric or constant
+    samples, and ``medcouple(-x) == -medcouple(x)``. Breakdown point 25%.
+    Computed exactly in O(n log n) time.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample.
+
+    References
+    ----------
+    Brys, G., Hubert, M. and Struyf, A. (2004). A robust measure of skewness.
+    *Journal of Computational and Graphical Statistics*, 13(4), 996-1017.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import medcouple
+    >>> medcouple([1, 2, 2, 3, 4, 100])
+    0.5
     """
     x = np.sort(as_1d(x))
     if x.size == 0:
@@ -385,7 +601,31 @@ def medcouple(x):
 
 
 def lmc(x):
-    """Left medcouple ``-MC(x[x <= median])``, a left tail-weight measure (Brys et al. 2006)."""
+    """Left medcouple, a robust measure of left tail weight (Brys, Hubert & Struyf 2006).
+
+    ``LMC = -medcouple(x[x <= median(x)])``; larger values mean a heavier left tail.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample.
+
+    References
+    ----------
+    Brys, G., Hubert, M. and Struyf, A. (2006). Robust measures of tail weight.
+    *Computational Statistics & Data Analysis*, 50(3), 733-759.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import lmc
+    >>> round(lmc([0.2, 0.5, 0.9, 1.1, 1.6, 2.4, 3.8, 7.5]), 4)
+    0.0556
+    """
     x = as_1d(x)
     if x.size == 0:
         return np.nan
@@ -393,7 +633,31 @@ def lmc(x):
 
 
 def rmc(x):
-    """Right medcouple ``MC(x[x >= median])``, a right tail-weight measure (Brys et al. 2006)."""
+    """Right medcouple, a robust measure of right tail weight (Brys, Hubert & Struyf 2006).
+
+    ``RMC = medcouple(x[x >= median(x)])``; larger values mean a heavier right tail.
+
+    Parameters
+    ----------
+    x : array_like
+        One-dimensional sample of finite values.
+
+    Returns
+    -------
+    float
+        ``nan`` for an empty sample.
+
+    References
+    ----------
+    Brys, G., Hubert, M. and Struyf, A. (2006). Robust measures of tail weight.
+    *Computational Statistics & Data Analysis*, 50(3), 733-759.
+
+    Examples
+    --------
+    >>> from robustmodels.scale import rmc
+    >>> round(rmc([0.2, 0.5, 0.9, 1.1, 1.6, 2.4, 3.8, 7.5]), 4)
+    0.2458
+    """
     x = as_1d(x)
     if x.size == 0:
         return np.nan

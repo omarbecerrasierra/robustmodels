@@ -1,4 +1,12 @@
-"""Robust covariance estimators and their fitting steps."""
+"""Robust covariance estimators and their fitting steps.
+
+The estimators follow the scikit-learn API and extend
+:class:`sklearn.covariance.EmpiricalCovariance`. ``fit(X)`` takes observations
+in rows and sets ``location_``, ``covariance_``, ``precision_`` and ``dist_``
+(squared robust distances of the training data). The inherited
+``mahalanobis(X)`` returns squared robust distances of new observations, and
+``score``, ``error_norm`` and ``get_precision`` work as in scikit-learn.
+"""
 
 import math
 import warnings
@@ -56,30 +64,83 @@ class _RobustCovariance(EmpiricalCovariance):
 class MCD(_RobustCovariance):
     """Minimum Covariance Determinant estimator (Rousseeuw 1984).
 
-    Mean and covariance of the ``h`` observations whose covariance has the
-    smallest determinant, followed by an optional reweighting step.
+    Mean and covariance of the ``h`` observations whose covariance matrix has the
+    smallest determinant, scaled for consistency at the normal model. The
+    reweighting step then recomputes both from the observations whose squared
+    robust distance is below the 0.975 chi-square quantile. Breakdown point
+    ``(n - h + 1) / n``, about 50% for ``alpha = 0.5``. Needs ``n > p``; use
+    :class:`MRCD` otherwise. If ``h`` observations lie on a hyperplane, a
+    ``RuntimeWarning`` reports the exact fit and the raw estimates are kept.
 
     Parameters
     ----------
     alpha : float in [0.5, 1], default 0.5
-        Coverage; ``h = (n + p + 1) // 2`` for 0.5 (maximal breakdown).
+        Coverage. The subset size ``h = h_alpha_n(alpha, n, p)`` goes from
+        ``(n + p + 1) // 2`` (maximal breakdown) at 0.5 to ``n`` at 1.
     algorithm : {"fast", "deterministic"}, default "fast"
-        FAST-MCD (Rousseeuw & Van Driessen 1999) or DetMCD (Hubert, Rousseeuw
-        & Verdonck 2012).
+        FAST-MCD with random starts (Rousseeuw & Van Driessen 1999), or DetMCD
+        with six deterministic starts (Hubert, Rousseeuw & Verdonck 2012).
+        With one variable both use the exact univariate MCD.
     n_trials : int, default 500
-        Random starts of FAST-MCD.
+        Random starting subsets of FAST-MCD.
     reweighting : bool, default True
-        Reweight at the 0.975 chi-square quantile.
+        Apply the reweighting step.
     small_sample_correction : bool, default True
-        Factors of Pison, Van Aelst & Willems (2002).
-    random_state : int, Generator or None
+        Multiply the covariance by the factors of Pison, Van Aelst & Willems (2002).
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of FAST-MCD.
 
     Attributes
     ----------
-    raw_location_, raw_covariance_, raw_support_ : raw MCD and its h-subset.
-    location_, covariance_, precision_, support_ : reweighted estimates.
-    dist_ : squared robust distances.
-    h_ : subset size.
+    location_ : ndarray of shape (n_features,)
+        Final location.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Final covariance matrix.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    support_ : ndarray of bool, shape (n_samples,)
+        Observations used for the final estimates.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    raw_location_ : ndarray of shape (n_features,)
+        Mean of the ``h``-subset.
+    raw_covariance_ : ndarray of shape (n_features, n_features)
+        Corrected covariance of the ``h``-subset.
+    raw_support_ : ndarray of bool, shape (n_samples,)
+        The ``h``-subset.
+    h_ : int
+        Subset size.
+
+    References
+    ----------
+    Rousseeuw, P. J. (1984). Least median of squares regression. *Journal of the
+    American Statistical Association*, 79(388), 871-880.
+
+    Rousseeuw, P. J. and Van Driessen, K. (1999). A fast algorithm for the
+    minimum covariance determinant estimator. *Technometrics*, 41(3), 212-223.
+
+    Hubert, M., Rousseeuw, P. J. and Verdonck, T. (2012). A deterministic
+    algorithm for robust location and scatter. *Journal of Computational and
+    Graphical Statistics*, 21(3), 618-637.
+
+    Croux, C. and Haesbroeck, G. (1999). Influence function and efficiency of the
+    minimum covariance determinant scatter matrix estimator. *Journal of
+    Multivariate Analysis*, 71(2), 161-190.
+
+    Pison, G., Van Aelst, S. and Willems, G. (2002). Small sample corrections for
+    LTS and MCD. *Metrika*, 55, 111-123.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import MCD
+    >>> X = np.random.default_rng(0).normal(size=(100, 2))
+    >>> X[:10] += 10  # ten outliers
+    >>> mcd = MCD(random_state=0).fit(X)
+    >>> mcd.location_.round(2).tolist()
+    [0.01, 0.1]
+    >>> int(mcd.support_[:10].sum())  # no outlier is used
+    0
     """
 
     def __init__(
@@ -100,6 +161,7 @@ class MCD(_RobustCovariance):
         self.random_state = random_state
 
     def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = self._validate(X)
         n, p = X.shape
         check_option("algorithm", self.algorithm, ("fast", "deterministic"))
@@ -245,7 +307,28 @@ def _univariate_mcd(z, h):
 
 
 def h_alpha_n(alpha, n, p):
-    """Subset size for coverage ``alpha``; ``alpha = 0.5`` gives ``(n + p + 1) // 2``."""
+    """Subset size of the MCD for coverage ``alpha``, as R's ``robustbase::h.alpha.n``.
+
+    ``(n + p + 1) // 2`` at ``alpha = 0.5``, ``n`` at ``alpha = 1`` and linear in
+    between.
+
+    Parameters
+    ----------
+    alpha : float in [0.5, 1]
+        Coverage.
+    n, p : int
+        Number of observations and of variables.
+
+    Returns
+    -------
+    int
+
+    Examples
+    --------
+    >>> from robustmodels.covariance import h_alpha_n
+    >>> h_alpha_n(0.5, 100, 3), h_alpha_n(0.75, 100, 3)
+    (52, 76)
+    """
     check_range("alpha", alpha, 0.5, 1)
     check_count("n", n)
     check_count("p", p)
@@ -254,7 +337,29 @@ def h_alpha_n(alpha, n, p):
 
 
 def mcd_consistency(p, alpha):
-    """Consistency factor at the normal model (Croux & Haesbroeck 1999)."""
+    """Consistency factor of the MCD at the normal model (Croux & Haesbroeck 1999).
+
+    ``alpha / F_{p+2}(chi2_p^-1(alpha))``, with ``F_k`` the chi-square distribution
+    function with ``k`` degrees of freedom. It makes the covariance of the
+    fraction ``alpha`` of observations closest to the center consistent.
+
+    Parameters
+    ----------
+    p : int
+        Number of variables.
+    alpha : float in (0, 1]
+        Fraction of observations kept; 1 gives 1.
+
+    Returns
+    -------
+    float
+
+    Examples
+    --------
+    >>> from robustmodels.covariance import mcd_consistency
+    >>> round(mcd_consistency(3, 0.5), 4)
+    2.4574
+    """
     check_count("p", p)
     check_range("alpha", alpha, 0, 1, low_open=True)
     if alpha == 1:
@@ -306,7 +411,30 @@ def _bias_curve(p, n, alpha, reweighted):
 
 
 def mcd_small_sample(p, n, alpha, reweighted=False):
-    """Small-sample factor of Pison, Van Aelst & Willems (2002), interpolated in ``alpha``."""
+    """Small-sample factor of the MCD (Pison, Van Aelst & Willems 2002).
+
+    The paper fits the factors at ``alpha = 0.5`` and ``0.875``; other coverages
+    are interpolated linearly, reaching 1 at ``alpha = 1``.
+
+    Parameters
+    ----------
+    p, n : int
+        Number of variables and of observations.
+    alpha : float in [0.5, 1]
+        Coverage.
+    reweighted : bool, default False
+        Factor for the reweighted instead of the raw MCD.
+
+    Returns
+    -------
+    float
+
+    Examples
+    --------
+    >>> from robustmodels.covariance import mcd_small_sample
+    >>> round(mcd_small_sample(3, 100, 0.5), 4)
+    1.0989
+    """
     check_count("p", p)
     check_count("n", n)
     check_range("alpha", alpha, 0.5, 1)
@@ -320,29 +448,61 @@ def mcd_small_sample(p, n, alpha, reweighted=False):
 
 
 class MRCD(_RobustCovariance):
-    """Minimum Regularized Covariance Determinant (Boudt et al. 2020).
+    """Minimum Regularized Covariance Determinant estimator (Boudt et al. 2020).
 
-    On robustly standardized data, the h-subset ``H`` minimizes the
-    determinant of ``K(H) = rho * I + (1 - rho) * c_alpha * cov(H)``, with
-    ``rho`` the smallest weight keeping the condition number below
-    ``max_condition``. Works when there are more variables than observations;
-    ``rho = 0`` (the plain MCD) when that is already well-conditioned.
-    Uses the identity matrix as the regularization target.
+    The data are standardized with the column medians and Qn scales. The
+    ``h``-subset ``H`` then minimizes the determinant of
+    ``K(H) = rho * I + (1 - rho) * c_alpha * cov(H)``, where ``c_alpha`` is the
+    MCD consistency factor and ``rho`` the smallest weight that keeps the
+    condition number of ``K`` below ``max_condition``. In the original units
+    the regularization target is the diagonal matrix of squared Qn scales.
+    Works with more variables than observations; when the subset covariance is
+    already well-conditioned, ``rho = 0`` and the result is the raw MCD. There is
+    no reweighting step.
 
     Parameters
     ----------
     alpha : float in [0.5, 1], default 0.5
-        Subset size ``h = ceil(alpha * n)``.
+        Coverage; the subset size is ``h = ceil(alpha * n)``.
     max_condition : float, default 50
+        Largest condition number allowed for the regularized covariance.
     rho : float in [0, 1), optional
-        Fixed regularization weight (overrides ``max_condition``).
+        Fixed regularization weight, which replaces ``max_condition``. Needed when a
+        starting subset has zero scatter.
 
     Attributes
     ----------
-    location_, covariance_, precision_, dist_ : estimates.
-    support_ : the h-subset.
-    rho_ : regularization weight used.
-    h_ : subset size.
+    location_ : ndarray of shape (n_features,)
+        Mean of the ``h``-subset.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Regularized covariance matrix.
+    precision_ : ndarray of shape (n_features, n_features)
+        Inverse of ``covariance_``.
+    support_ : ndarray of bool, shape (n_samples,)
+        The ``h``-subset.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    rho_ : float
+        Regularization weight used.
+    h_ : int
+        Subset size.
+
+    References
+    ----------
+    Boudt, K., Rousseeuw, P. J., Vanduffel, S. and Verdonck, T. (2020). The
+    minimum regularized covariance determinant estimator. *Statistics and
+    Computing*, 30(1), 113-128.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import MRCD
+    >>> X = np.random.default_rng(0).normal(size=(20, 50))  # p > n
+    >>> mrcd = MRCD().fit(X)
+    >>> mrcd.covariance_.shape
+    (50, 50)
+    >>> 0 < mrcd.rho_ < 1
+    True
     """
 
     def __init__(self, *, alpha=0.5, max_condition=50.0, rho=None):
@@ -351,6 +511,7 @@ class MRCD(_RobustCovariance):
         self.rho = rho
 
     def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = self._validate(X)
         check_range("alpha", self.alpha, 0.5, 1)
         check_range("max_condition", self.max_condition, 1, np.inf, low_open=True)
@@ -440,25 +601,61 @@ def _mrcd_steps(X, subset, h, rho, correction, max_steps=200):
 class MVE(_RobustCovariance):
     """Minimum Volume Ellipsoid estimator (Rousseeuw 1985).
 
-    Center and scaled shape of the smallest ellipsoid covering ``h`` points,
-    approximated by resampling (p+1)-subsets; the 10 best ellipsoids are
-    refitted to the ``h`` points they cover while the volume decreases.
+    Center and scaled shape of the smallest ellipsoid that covers ``h``
+    observations. The search draws random ``(p + 1)``-subsets, then refits the
+    10 best ellipsoids to the ``h`` points they cover while the volume
+    decreases. The shape is scaled for consistency at the normal model and
+    reweighted as in :class:`MCD`. Breakdown point about 50% for
+    ``alpha = 0.5``. Needs ``n > p + 1``.
 
     Parameters
     ----------
     alpha : float in [0.5, 1), default 0.5
         Coverage, as for :class:`MCD`. Full coverage has no finite scale correction.
     n_trials : int, default 500
+        Random starting subsets.
     reweighting : bool, default True
-        Reweight at the 0.975 chi-square quantile.
-    random_state : int, Generator or None
+        Recompute mean and covariance from the observations whose squared robust
+        distance is below the 0.975 chi-square quantile.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of the random subsets.
 
     Attributes
     ----------
-    raw_location_, raw_covariance_, raw_support_ : best ellipsoid and the points it covers.
-    location_, covariance_, precision_, support_ : reweighted estimates.
-    dist_ : squared robust distances.
-    h_ : subset size.
+    location_ : ndarray of shape (n_features,)
+        Final location.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Final covariance matrix.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    support_ : ndarray of bool, shape (n_samples,)
+        Observations used for the final estimates.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    raw_location_ : ndarray of shape (n_features,)
+        Center of the best ellipsoid.
+    raw_covariance_ : ndarray of shape (n_features, n_features)
+        Scaled shape of the best ellipsoid.
+    raw_support_ : ndarray of bool, shape (n_samples,)
+        Observations inside the best ellipsoid.
+    h_ : int
+        Number of observations covered.
+
+    References
+    ----------
+    Rousseeuw, P. J. (1985). Multivariate estimation with high breakdown point.
+    In W. Grossmann et al. (eds.), *Mathematical Statistics and Applications*,
+    Vol. B, 283-297. Reidel.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import MVE
+    >>> X = np.random.default_rng(0).normal(size=(100, 2))
+    >>> X[:10] += 10
+    >>> mve = MVE(random_state=0).fit(X)
+    >>> mve.location_.round(2).tolist()
+    [0.01, 0.1]
     """
 
     def __init__(self, *, alpha=0.5, n_trials=500, reweighting=True, random_state=None):
@@ -468,6 +665,7 @@ class MVE(_RobustCovariance):
         self.random_state = random_state
 
     def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = self._validate(X)
         check_range("alpha", self.alpha, 0.5, 1, high_open=True)
         n, p = X.shape
@@ -531,24 +729,59 @@ _SCALES = {"tau": tau_scale, "qn": qn, "mad": mad, "pn": pn}
 class OGK(_RobustCovariance):
     """Orthogonalized Gnanadesikan-Kettenring estimator (Maronna & Zamar 2002).
 
-    Pairwise covariances ``(s(X+Y)^2 - s(X-Y)^2) / 4`` made positive definite by
-    orthogonalization.
+    Robust pairwise covariances ``(s(X + Y)^2 - s(X - Y)^2) / 4``, with ``s`` a
+    robust univariate scale, made positive definite by orthogonalization.
+    Deterministic and fast for many variables. It is equivariant under shifts
+    and rescaling of the variables, but not under rotations.
 
     Parameters
     ----------
     scale : {"tau", "qn", "mad", "pn"}, default "tau"
-        Univariate scale; "tau" uses the tau location, the others the median.
+        Univariate scale. "tau" is centered at the tau location, the others at
+        the median.
     n_iter : int, default 2
         Orthogonalization iterations.
     reweighting : bool, default True
-        Keep points with ``d^2 <= chi2_p(beta) * median(d^2) / chi2_p(0.5)``.
-        The reweighted covariance is corrected for consistency at the normal model.
-    beta : float, default 0.9
+        Recompute mean and covariance from the observations with
+        ``d^2 <= chi2_p^-1(beta) * median(d^2) / chi2_p^-1(0.5)``. The reweighted
+        covariance is corrected for consistency at the normal model, which R's
+        ``covOGK`` omits.
+    beta : float in (0, 1), default 0.9
+        Quantile of the reweighting cutoff.
 
     Attributes
     ----------
-    raw_location_, raw_covariance_ : estimates before reweighting.
-    location_, covariance_, precision_, support_, dist_ : final estimates.
+    location_ : ndarray of shape (n_features,)
+        Final location.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Final covariance matrix.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    support_ : ndarray of bool, shape (n_samples,)
+        Observations used for the final estimates (all if ``reweighting=False``).
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    raw_location_ : ndarray of shape (n_features,)
+        Location before reweighting.
+    raw_covariance_ : ndarray of shape (n_features, n_features)
+        Covariance before reweighting.
+
+    References
+    ----------
+    Maronna, R. A. and Zamar, R. H. (2002). Robust estimates of location and
+    dispersion for high-dimensional datasets. *Technometrics*, 44(4), 307-317.
+
+    Gnanadesikan, R. and Kettenring, J. R. (1972). Robust estimates, residuals,
+    and outlier detection with multiresponse data. *Biometrics*, 28(1), 81-124.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import OGK
+    >>> X = np.random.default_rng(0).normal(size=(100, 2))
+    >>> X[:10] += 10
+    >>> OGK().fit(X).covariance_.round(1).tolist()
+    [[1.1, 0.2], [0.2, 1.1]]
     """
 
     def __init__(self, *, scale="tau", n_iter=2, reweighting=True, beta=0.9):
@@ -558,6 +791,7 @@ class OGK(_RobustCovariance):
         self.beta = beta
 
     def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = self._validate(X)
         check_option("scale", self.scale, _SCALES)
         check_count("n_iter", self.n_iter)
@@ -614,27 +848,64 @@ def _scales(X, scale_fn):
 
 
 class SEstimator(_RobustCovariance):
-    """S-estimator of location and scatter (Davies 1987).
+    """S-estimator of location and scatter (Davies 1987), with Tukey's bisquare.
 
-    Minimizes ``det(Sigma)`` subject to ``mean(rho(d_i / s)) = breakdown``,
-    computed with FAST-S (Salibian-Barrera, Van Aelst & Willems 2006).
-    Consistent at the normal model.
+    Finds the location ``mu`` and the shape ``Gamma`` (determinant 1) that
+    minimize the M-scale ``s`` of the distances
+    ``d_i = sqrt((x_i - mu)' Gamma^-1 (x_i - mu))``, where ``s`` solves
+    ``mean(rho(d_i / s)) = breakdown``. The covariance is ``s^2 * Gamma``,
+    consistent at the normal model. Computed with the FAST-S algorithm
+    (Salibián-Barrera, Van Aelst & Willems 2006). Affine equivariant; needs
+    ``n > p``.
 
     Parameters
     ----------
     breakdown : float in (0, 0.5], default 0.5
+        Breakdown point.
     n_trials : int, default 500
-        Random (p+1)-subsets, each refined with ``k_steps`` I-steps.
+        Random ``(p + 1)``-subsets, each refined with ``k_steps`` I-steps.
     n_best : int, default 5
-        Candidates iterated to convergence.
+        Best candidates iterated to convergence.
     k_steps : int, default 2
+        I-steps applied to each random subset.
     max_iter : int, default 200
-    random_state : int, Generator or None
+        Maximum I-steps for each of the best candidates.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of the random subsets.
 
     Attributes
     ----------
-    location_, covariance_, precision_, dist_ : estimates.
-    scale_ : the minimized M-scale ``s``.
+    location_ : ndarray of shape (n_features,)
+        Location ``mu``.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Covariance matrix ``s^2 * Gamma``.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    scale_ : float
+        The minimized M-scale ``s``.
+
+    References
+    ----------
+    Davies, P. L. (1987). Asymptotic behaviour of S-estimates of multivariate
+    location parameters and dispersion matrices. *Annals of Statistics*, 15(3),
+    1269-1292.
+
+    Salibián-Barrera, M., Van Aelst, S. and Willems, G. (2006). Principal
+    components analysis based on multivariate MM estimators with fast and robust
+    bootstrap. *Journal of the American Statistical Association*, 101(475),
+    1198-1211.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import SEstimator
+    >>> X = np.random.default_rng(0).normal(size=(100, 2))
+    >>> X[:10] += 10
+    >>> s = SEstimator(random_state=0).fit(X)
+    >>> s.covariance_.round(1).tolist()
+    [[1.1, 0.1], [0.1, 1.3]]
     """
 
     def __init__(
@@ -648,6 +919,7 @@ class SEstimator(_RobustCovariance):
         self.random_state = random_state
 
     def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = self._validate(X)
         location, shape, self.scale_ = self._fit_s(X)
         self._set_estimates(location, self.scale_**2 * shape, X)
@@ -724,9 +996,11 @@ def _weighted_shape(X, weights):
 class MMEstimator(_RobustCovariance):
     """MM-estimator of location and scatter (Tatsuoka & Tyler 2000).
 
-    Keeps the scale of a bisquare S-estimator and computes a bisquare
-    M-estimator of location and shape tuned for the requested Gaussian
-    efficiency of the shape.
+    Starts from a bisquare :class:`SEstimator` and keeps its scale ``s``. A
+    bisquare M-estimator of location and shape, tuned for the requested Gaussian
+    efficiency of the shape, then refines the estimates. It keeps the breakdown
+    point of the S-estimator and gains efficiency. Affine equivariant; needs
+    ``n > p``.
 
     Parameters
     ----------
@@ -735,14 +1009,49 @@ class MMEstimator(_RobustCovariance):
     efficiency : float in (0, 1), default 0.95
         Gaussian efficiency of the shape.
     n_trials : int, default 500
+        Random subsets of the initial S-estimator.
     max_iter : int, default 200
-    random_state : int, Generator or None
+        Maximum iterations of the M-step.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of the initial S-estimator.
 
     Attributes
     ----------
-    location_, covariance_, precision_, dist_ : estimates.
-    scale_ : scale of the S-estimator.
-    s_location_, s_covariance_ : the initial S-estimates.
+    location_ : ndarray of shape (n_features,)
+        MM location.
+    covariance_ : ndarray of shape (n_features, n_features)
+        MM covariance matrix.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    scale_ : float
+        Scale of the S-estimator.
+    s_location_ : ndarray of shape (n_features,)
+        Location of the S-estimator.
+    s_covariance_ : ndarray of shape (n_features, n_features)
+        Covariance of the S-estimator.
+
+    References
+    ----------
+    Tatsuoka, K. S. and Tyler, D. E. (2000). On the uniqueness of S-functionals
+    and M-functionals under nonelliptical distributions. *Annals of Statistics*,
+    28(4), 1219-1243.
+
+    Salibián-Barrera, M., Van Aelst, S. and Willems, G. (2006). Principal
+    components analysis based on multivariate MM estimators with fast and robust
+    bootstrap. *Journal of the American Statistical Association*, 101(475),
+    1198-1211.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import MMEstimator
+    >>> X = np.random.default_rng(0).normal(size=(100, 2))
+    >>> X[:10] += 10
+    >>> mm = MMEstimator(random_state=0).fit(X)
+    >>> mm.covariance_.round(1).tolist()
+    [[1.2, 0.1], [0.1, 1.2]]
     """
 
     def __init__(
@@ -755,6 +1064,7 @@ class MMEstimator(_RobustCovariance):
         self.random_state = random_state
 
     def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = self._validate(X)
         check_count("max_iter", self.max_iter)
         c = _tuning_for_shape_efficiency(self.efficiency, X.shape[1])
