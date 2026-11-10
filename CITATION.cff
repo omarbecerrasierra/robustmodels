@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "robustmodels: robust statistics for Python"
+type: software
+authors:
+  - name: omarbecerrasierra
+version: 0.1.0
+date-released: "2026-11-09"
+license: BSD-3-Clause
+repository-code: "https://github.com/omarbecerrasierra/robustmodels"
+url: "https://omarbecerrasierra.github.io/robustmodels/"
+abstract: >-
+  Robust estimators of univariate location and scale and of multivariate
+  location and scatter, with the scikit-learn estimator interface.
+keywords:
+  - robust statistics
+  - outliers
+  - covariance
