@@ -1,6 +1,7 @@
 # robustmodels
 
 [![PyPI](https://img.shields.io/pypi/v/robustmodels)](https://pypi.org/project/robustmodels/)
+[![Docs](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/docs.yml/badge.svg)](https://omarbecerrasierra.github.io/robustmodels/)
 [![CI](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml/badge.svg)](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml)
 
 Robust location, scale and covariance estimators for Python. Early development:
@@ -49,8 +50,9 @@ model.support_  # observations kept after reweighting
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`; skewness and tail weight: `medcouple`, `lmc`, `rmc` |
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator`; correction factors: `h_alpha_n`, `mcd_consistency`, `mcd_small_sample` |
 
-Each docstring states the definition and its reference; see for example
-`help(robustmodels.scale.qn)`.
+The [documentation](https://omarbecerrasierra.github.io/robustmodels/) explains how
+to choose and use each estimator and documents every function and class. The same
+information is in the docstrings: `help(robustmodels.scale.qn)`.
 
 Univariate functions accept finite, one-dimensional samples. Empty samples return
 `NaN`. A single observation has zero scale. Covariance estimators accept matrices
@@ -78,10 +80,17 @@ uv build
 uvx twine check --strict dist/*
 ```
 
+Run the docstring examples and build the documentation:
+
+```bash
+uv run pytest --doctest-modules --pyargs robustmodels
+uv run --group docs sphinx-build -W -b html docs docs/_build/html
+```
+
 CI runs the tests against the installed wheel on Python 3.10, 3.13 and 3.14.
 The Python 3.10 job uses the minimum supported NumPy, SciPy and scikit-learn versions.
 
-The tests cover estimator definitions, statistical properties, edge cases,
+The examples in `docs/` and in the docstrings run as tests. The tests cover estimator definitions, statistical properties, edge cases,
 agreement with R's robustbase and rrcov, and
 [scikit-learn compatibility](https://scikit-learn.org/stable/developers/develop.html).
 
