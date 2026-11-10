@@ -365,7 +365,7 @@ def mcd_consistency(p, alpha):
     if alpha == 1:
         return 1.0
     cutoff = chi2.ppf(alpha, p)
-    return alpha / chi2.cdf(cutoff, p + 2)
+    return float(alpha / chi2.cdf(cutoff, p + 2))
 
 
 # Pison, Van Aelst & Willems (2002): curves f(n) = 1 - exp(a) / n**b.
@@ -444,7 +444,7 @@ def mcd_small_sample(p, n, alpha, reweighted=False):
         f = f50 + (f875 - f50) * (alpha - 0.5) / 0.375
     else:
         f = f875 + (1 - f875) * (alpha - 0.875) / 0.125
-    return 1 / f if f > 0 else 1.0
+    return float(1 / f) if f > 0 else 1.0
 
 
 class MRCD(_RobustCovariance):

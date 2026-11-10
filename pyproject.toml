@@ -34,20 +34,21 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/omarbecerrasierra/robustmodels"
-Documentation = "https://github.com/omarbecerrasierra/robustmodels#readme"
+Documentation = "https://omarbecerrasierra.github.io/robustmodels/"
 Repository = "https://github.com/omarbecerrasierra/robustmodels"
 Issues = "https://github.com/omarbecerrasierra/robustmodels/issues"
 Changelog = "https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
+docs = ["sphinx>=8", "furo>=2024.8.6", "myst-parser>=4"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/robustmodels", "tests", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["src/robustmodels", "tests", "docs", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-ra"
+testpaths = ["tests", "docs"]
+addopts = "-ra --doctest-glob='*.md'"
 
 [tool.ruff]
 line-length = 100
