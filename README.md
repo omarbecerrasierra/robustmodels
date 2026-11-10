@@ -87,7 +87,7 @@ uv run pytest --doctest-modules --pyargs robustmodels
 uv run --group docs sphinx-build -W -b html docs docs/_build/html
 ```
 
-CI runs the tests against the installed wheel on Python 3.10, 3.13 and 3.14.
+CI runs the tests against the installed wheel on Python 3.10 to 3.14.
 The Python 3.10 job uses the minimum supported NumPy, SciPy and scikit-learn versions.
 
 The examples in `docs/` and in the docstrings run as tests. The tests cover estimator definitions, statistical properties, edge cases,
