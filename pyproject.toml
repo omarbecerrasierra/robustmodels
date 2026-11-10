@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robustmodels"
-version = "0.1.0"
+version = "0.1.1"
 description = "Robust statistics for Python: univariate location and scale, multivariate location and scatter."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -44,7 +44,7 @@ dev = ["pytest>=8", "ruff>=0.6"]
 docs = ["sphinx>=8", "furo>=2024.8.6", "myst-parser>=4"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/robustmodels", "tests", "docs", "README.md", "LICENSE", "CHANGELOG.md"]
+include = ["src/robustmodels", "tests", "docs", "README.md", "LICENSE", "CHANGELOG.md", "CITATION.cff"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "docs"]

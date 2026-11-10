@@ -62,7 +62,7 @@ MRCD needs an explicit positive `rho` when a starting subset has zero scatter.
 
 Qn, Sn and Pn include finite-sample corrections by default. Pass
 `finite_correction=False` to disable them. Pn uses the factors from
-[Tarr (2014), Appendix B.3](https://www.researchgate.net/publication/267927753_Quantile_Based_Estimation_of_Scale_and_Dependence).
+[Tarr (2014), Appendix B.3](https://hdl.handle.net/2123/10590).
 
 ## Development
 
@@ -111,9 +111,15 @@ and at most two supporting files. `__init__.py` exposes the three public modules
 1. Set `version` in `pyproject.toml`, run `uv lock`, and replace "unreleased"
    in [CHANGELOG.md](https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md)
    with the date.
-2. Merge into `main`, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
+2. Merge into `main`, then tag and push: `git tag v0.1.1 && git push origin v0.1.1`.
 3. CI tests, builds and, after approval of the `pypi` environment, publishes to
    PyPI through trusted publishing. The tag must match the package version.
+
+## Citation
+
+If you use robustmodels in your work, please cite it with the metadata in
+[CITATION.cff](https://github.com/omarbecerrasierra/robustmodels/blob/main/CITATION.cff)
+("Cite this repository" on GitHub).
 
 ## License
 

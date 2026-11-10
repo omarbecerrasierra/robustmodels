@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+- Link Tarr's thesis through its permanent University of Sydney handle.
+- Add `CITATION.cff`.
+
 ## 0.1.0 (2026-11-09)
 
 First release.

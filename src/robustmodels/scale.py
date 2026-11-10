@@ -257,7 +257,7 @@ PN_CONSTANT = 1 / (np.sqrt(2) * norm.ppf(0.75))
 
 
 # Tarr (2014), Appendix B.3, p. 148: factors for n = 3, ..., 40.
-# https://www.researchgate.net/publication/267927753
+# https://hdl.handle.net/2123/10590
 _PN_N = (
     1.128,
     1.303,
@@ -330,7 +330,7 @@ def pn(x, *, consistency=True, finite_correction=True):
     on pairwise means. *Journal of Nonparametric Statistics*, 24(1), 187-199.
 
     Tarr, G. (2014). *Quantile Based Estimation of Scale and Dependence*.
-    PhD thesis, University of Sydney.
+    PhD thesis, University of Sydney. https://hdl.handle.net/2123/10590
 
     Examples
     --------
