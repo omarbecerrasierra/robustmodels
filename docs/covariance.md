@@ -14,9 +14,11 @@ Robust estimators of multivariate location and scatter, in
 | `SEstimator` | `n > p` | Yes | Smooth weights instead of a hard subset |
 | `MMEstimator` | `n > p` | Yes | S-estimator refined to 95% shape efficiency |
 
-Here `n` is the number of observations and `p` the number of variables. MCD,
-MVE, S and MM are affine equivariant and reach a 50% breakdown point with their
-default settings.
+Here `n` is the number of observations and `p` the number of variables. The exact MCD, MVE, S and MM definitions are affine equivariant under their
+respective assumptions. Numerical searches may behave differently; in
+particular deterministic starts do not guarantee full affine equivariance.
+Maximal breakdown approaches 50% for fixed dimension as sample size grows,
+and can be substantially lower in small samples or high dimensions.
 
 ## Use
 
@@ -65,7 +67,9 @@ above a high quantile:
 ```
 
 The ten planted outliers are found. Observation 69 is a clean point in the
-tail: with a 0.975 quantile, about 2.5% of the clean data are expected there.
+tail. The 2.5% tail probability is a population/asymptotic reference; fitted
+in-sample distances do not provide an exact finite-sample test or an exact
+2.5% false-positive rate.
 
 ### Reproducibility
 
@@ -106,6 +110,35 @@ The estimators work with `clone`, `get_params`, `set_params` and pipelines:
 75
 
 ```
+
+## Numerical limits and sources
+
+MCD is solved by an exhaustive sorted-window search in one dimension.
+Multivariate MCD, MRCD, MVE, S and MM use finite searches or iterative
+refinements: they do not certify a global optimum. The MVE implementation
+searches elemental ellipsoids and local refits; it also does not solve a
+minimum-volume enclosing-ellipsoid problem for each selected subset.
+
+For exact raw MCD on data in general position, the finite-sample breakdown
+fraction is `min(n-h+1, h-p)/n`; it is not simply 50% for every `n,p`.
+Finite-sample correction factors are empirical approximations.
+
+MRCD applies the common-rho rule in Boudt et al., algorithm step 3.4. The
+`max_condition` parameter calibrates **initial** subsets in standardized
+coordinates. Keeping rho fixed during C-steps does not impose a hard bound
+on the final subset's condition number. In original units, unequal column
+scales can further increase the condition number.
+
+MM's `efficiency` targets asymptotic **shape** efficiency. Its scale comes from
+the S-estimator; 95% shape efficiency does not imply 95% efficiency for location
+or all covariance entries. The final normalized bisquare loss must not exceed
+the initial loss pointwise (final tuning at least initial tuning). Parameter
+combinations violating this condition raise `ValueError`.
+
+Sources: [FAST-MCD](references.md#rvd99), [DetMCD](references.md#hrv12),
+[MCD corrections](references.md#pvaw02), [MRCD](references.md#brvv20),
+[MVE](references.md#var09), [OGK](references.md#mz02),
+[S-estimation](references.md#d87), and [multivariate MM](references.md#sbvaw06).
 
 ## Reference
 

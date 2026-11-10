@@ -102,7 +102,8 @@ def qn(x, *, consistency=True, finite_correction=True):
 
     The ``k``-th smallest of the distances ``|x_i - x_j|``, ``i < j``, with
     ``k = h(h - 1) / 2`` and ``h = n // 2 + 1``. Breakdown point 50%, Gaussian
-    efficiency 82%. Computed exactly in O(n log n) time, without forming all pairs.
+    asymptotic efficiency 82%. The current sorted-row selection uses
+    O(n log^2 n) time and O(n) auxiliary storage, without forming all pairs.
 
     Parameters
     ----------
@@ -113,7 +114,7 @@ def qn(x, *, consistency=True, finite_correction=True):
         the standard deviation at the normal model.
     finite_correction : bool, default True
         Multiply by the small-sample factors used by R's robustbase, which make Qn
-        unbiased at the normal model for small ``n``.
+        approximately unbiased at the normal model for small ``n``.
 
     Returns
     -------
@@ -256,8 +257,8 @@ def _himed_distances(x):
 PN_CONSTANT = 1 / (np.sqrt(2) * norm.ppf(0.75))
 
 
-# Tarr (2014), Appendix B.3, p. 148: factors for n = 3, ..., 40.
-# https://hdl.handle.net/2123/10590
+# Tarr's reference implementation: factors for n = 3, ..., 40.
+# https://www.maths.usyd.edu.au/u/gartht/R/Pn.R
 _PN_N = (
     1.128,
     1.303,
@@ -305,8 +306,8 @@ def pn(x, *, consistency=True, finite_correction=True):
 
     Interquartile range of the pairwise means: ``H^-1(3/4) - H^-1(1/4)`` with
     ``H`` the empirical distribution of ``(x_i + x_j) / 2``, ``i < j``.
-    Breakdown point 13.4%, Gaussian efficiency 86%. Computed exactly in
-    O(n log n) time.
+    Asymptotic breakdown point 13.4%, Gaussian efficiency 86%. The current
+    sorted-row selection uses O(n log^2 n) time and O(n) auxiliary storage.
 
     Parameters
     ----------
@@ -316,7 +317,7 @@ def pn(x, *, consistency=True, finite_correction=True):
         Multiply by ``1 / (sqrt(2) * Phi^-1(3/4)) = 1.0484``, so that Pn estimates
         the standard deviation at the normal model.
     finite_correction : bool, default True
-        Multiply by the factors of Tarr (2014), Appendix B.3, for ``n <= 40`` and
+        Multiply by the factors in Tarr's reference R code for ``n <= 40`` and
         by ``n / (n - 0.7)`` for larger samples.
 
     Returns
@@ -331,6 +332,9 @@ def pn(x, *, consistency=True, finite_correction=True):
 
     Tarr, G. (2014). *Quantile Based Estimation of Scale and Dependence*.
     PhD thesis, University of Sydney. https://hdl.handle.net/2123/10590
+
+    Tarr's reference R implementation and finite-sample factors:
+    https://www.maths.usyd.edu.au/u/gartht/R/Pn.R
 
     Examples
     --------
@@ -498,14 +502,28 @@ def _mscale_bisquare(residuals, c, breakdown, s0=None, tol=1e-10, max_iter=200):
         if abs(updated - scale) <= tol * scale:
             return float(updated)
         scale = updated
-    return float(scale)
+
+    # Near an exact fit the fixed-point iteration can be arbitrarily slow.
+    # Finish with a bracketed root in log-scale, retaining relative accuracy
+    # across units and without accepting an unconverged iterate.
+    def equation(log_scale):
+        return np.mean(_rho(residuals / np.exp(log_scale), c)) - breakdown
+
+    lower = upper = np.log(scale)
+    step = np.log(2.0)
+    while equation(lower) < 0:
+        lower -= step
+    while equation(upper) > 0:
+        upper += step
+    root = optimize.brentq(equation, lower, upper, xtol=tol, rtol=1e-14)
+    return float(np.exp(root))
 
 
 def _rho(t, c):
     """Tukey's bisquare loss, normalized to rho(infinity) = 1."""
     squared = (t / c) ** 2
     clipped = np.minimum(squared, 1)
-    return 1 - (1 - clipped) ** 3
+    return clipped * (3 + clipped * (clipped - 3))
 
 
 def _bisquare_weights(t, c):
@@ -559,7 +577,9 @@ def medcouple(x):
     with ``m`` the sample median and the paper's kernel for ties at ``m``.
     Lies in [-1, 1]: positive for right skew, 0 for symmetric or constant
     samples, and ``medcouple(-x) == -medcouple(x)``. Breakdown point 25%.
-    Computed exactly in O(n log n) time.
+    The current sorted-row selection uses O(n log^2 n) time and O(n) auxiliary
+    storage. For an even number of kernels the two middle values are averaged;
+    this can differ from robustbase with ties at the median.
 
     Parameters
     ----------

@@ -53,6 +53,9 @@ model.support_  # observations kept after reweighting
 The [documentation](https://omarbecerrasierra.github.io/robustmodels/) explains how
 to choose and use each estimator and documents every function and class. The same
 information is in the docstrings: `help(robustmodels.scale.qn)`.
+The [method references](docs/references.md) map every public estimator to its
+scientific sources and R conventions. Multivariate subset searches are
+approximations and do not certify global optima.
 
 Univariate functions accept finite, one-dimensional samples. Empty samples return
 `NaN`. A single observation has zero scale. Covariance estimators accept matrices
@@ -62,7 +65,7 @@ MRCD needs an explicit positive `rho` when a starting subset has zero scatter.
 
 Qn, Sn and Pn include finite-sample corrections by default. Pass
 `finite_correction=False` to disable them. Pn uses the factors from
-[Tarr (2014), Appendix B.3](https://hdl.handle.net/2123/10590).
+[Tarr's reference implementation](https://www.maths.usyd.edu.au/u/gartht/R/Pn.R).
 
 ## Development
 

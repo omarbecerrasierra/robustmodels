@@ -2,6 +2,13 @@
 
 ## 0.1.1 (unreleased)
 
+- Stabilize univariate MCD window variances in the presence of extreme outliers.
+- Finish slow M-scale iterations with a bracketed root solver.
+- Select MRCD's common regularization weight according to the published rule.
+- Reject MM tuning combinations that violate the loss-ordering condition.
+- Warn when M-location reaches its iteration limit without convergence.
+- Add method citations and clarify finite-sample, complexity and optimization limits.
+
 - Link Tarr's thesis through its permanent University of Sydney handle.
 - Add `CITATION.cff`.
 

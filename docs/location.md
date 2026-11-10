@@ -7,13 +7,15 @@ Robust alternatives to the sample mean, in `robustmodels.location`.
 | Function | Breakdown point | Gaussian efficiency | Notes |
 | --- | --- | --- | --- |
 | `hodges_lehmann` | 29.3% | 95.5% | No tuning; a good default |
-| `m_location` (Huber) | 50% | 95% | Monotone psi, unique solution |
+| `m_location` (Huber) | 50% | 95% | Monotone psi; flat sets of solutions are possible |
 | `m_location` (bisquare) | 50% | 95% | Rejects gross outliers completely |
 | `tau_location` | 50% | | One weighted mean; no iteration |
 | `trimmed_mean` | `proportion` | | Removes the tails |
 | `winsorized_mean` | `proportion` | | Clips the tails |
 
-The median itself (`numpy.median`) has a 50% breakdown point and 64% efficiency.
+The percentages are asymptotic under the relevant assumptions. The M-location
+values assume the default robust scale and tuning. The median itself
+(`numpy.median`) has a 50% asymptotic breakdown point and 64% Gaussian efficiency.
 
 ## Use
 
@@ -53,6 +55,22 @@ estimate with `scale`:
 2.7655
 
 ```
+
+## Numerical conventions and sources
+
+`m_location` uses a fixed scale and starts from the median. A zero scale returns
+the median. Bisquare can have multiple stationary solutions; a local iteration
+does not certify a global minimum. If the requested iteration limit is reached,
+the last location is returned with a `RuntimeWarning`. Huber's monotone score
+can also have an interval of roots rather than a unique root.
+
+The Hodges–Lehmann estimator includes diagonal pairs. Its current sorted-row
+selector uses `O(n log² n)` time and `O(n)` auxiliary storage. It computes the
+specified median in floating-point arithmetic.
+
+Sources: [Hodges–Lehmann](references.md#hl63), [Huber](references.md#h64),
+[Beaton–Tukey](references.md#bt74), [Tukey–McLaughlin](references.md#tm63),
+and [Maronna–Zamar](references.md#mz02).
 
 ## Reference
 

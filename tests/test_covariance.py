@@ -51,6 +51,40 @@ def test_univariate_mcd_is_exact():
     assert np.var(x[mcd.raw_support_]) == pytest.approx(best)
 
 
+@pytest.mark.parametrize("outlier", [-1e12, 1e12, -1e100, 1e100])
+def test_univariate_mcd_extreme_outlier_does_not_erase_window_variances(outlier):
+    x = np.r_[outlier, np.random.default_rng(42).normal(size=12)]
+    fit = MCD(reweighting=False).fit(x[:, None])
+    # Independent exhaustive oracle; no prefix sums or sliding-window updates.
+    best = min(np.var(x[list(s)], ddof=1) for s in itertools.combinations(range(13), fit.h_))
+    assert np.var(x[fit.raw_support_], ddof=1) == pytest.approx(best, rel=1e-12)
+
+
+@pytest.mark.parametrize("breakdown, efficiency", [(0.5, 0.1), (0.1, 0.95)])
+def test_mm_rejects_loss_ordering_that_invalidates_breakdown(breakdown, efficiency):
+    X = np.random.default_rng(0).normal(size=(30, 2))
+    with pytest.raises(ValueError, match="efficiency.*breakdown"):
+        MMEstimator(breakdown=breakdown, efficiency=efficiency).fit(X)
+
+
+def test_mrcd_regularization_uses_paper_median_without_rounding_down():
+    from robustmodels.covariance import _center_scale, _deterministic_starts, _min_rho
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(30, 5))
+    X[:, 0] = X[:, 1] + rng.normal(size=30) * 0.1
+    center, scales = _center_scale(X)
+    Z = (X - center) / scales
+    h = 15
+    from robustmodels.covariance import mcd_consistency
+
+    weights = [
+        _min_rho(mcd_consistency(5, 0.5) * np.cov(Z[s].T), 10) for s in _deterministic_starts(Z, h)
+    ]
+    expected = max(weights) if max(weights) <= 0.1 else max(0.1, np.median(weights))
+    assert MRCD(max_condition=10).fit(X).rho_ == pytest.approx(expected, abs=1e-14)
+
+
 @pytest.mark.parametrize("est", [MCD(random_state=0), SEstimator(random_state=0),
                                  MMEstimator(random_state=0), MVE(random_state=0)])  # fmt: skip
 def test_affine_equivariance(est):
@@ -289,3 +323,31 @@ def test_mrcd_uses_the_smallest_regularization_for_the_condition_bound(eigenvalu
     if rho > 0:
         smaller = rho - 1e-6
         assert np.linalg.cond(smaller * np.eye(3) + (1 - smaller) * covariance) > 50
+
+
+@pytest.mark.parametrize("seed", [0, 9, 31])
+def test_mm_preserves_s_scale_and_decreases_final_loss(seed):
+    from robustmodels.scale import _tuning_for_shape_efficiency
+
+    X = np.random.default_rng(seed).standard_t(4, size=(80, 3))
+    X[:12] += 8
+    f = MMEstimator(random_state=0).fit(X)
+    c = _tuning_for_shape_efficiency(f.efficiency, X.shape[1])
+
+    def objective(center, covariance):
+        residuals = X - center
+        d2 = np.sum(residuals * np.linalg.solve(covariance, residuals.T).T, axis=1)
+        u2 = np.minimum(d2 / c**2, 1)
+        return np.mean(3 * u2 - 3 * u2**2 + u2**3)
+
+    assert np.linalg.slogdet(f.covariance_)[1] == pytest.approx(
+        np.linalg.slogdet(f.s_covariance_)[1], abs=1e-10
+    )
+    assert (
+        objective(f.location_, f.covariance_) <= objective(f.s_location_, f.s_covariance_) + 1e-12
+    )
+    # Independent one-step location score, including all coordinates.
+    u2 = f.dist_ / c**2
+    w = np.maximum(1 - u2, 0) ** 2
+    score = np.sum(w[:, None] * (X - f.location_), axis=0) / w.sum()
+    assert np.max(np.abs(score)) < 1e-4

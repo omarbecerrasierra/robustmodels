@@ -209,3 +209,29 @@ def test_pn_small_sample_factors_against_normal_order_statistics(n):
 def test_pn_two_observations_have_no_pairwise_spread():
     assert pn([1, 9]) == 0
     assert pn([1, 9], finite_correction=False) == 0
+
+
+@pytest.mark.parametrize("breakdown,n", [(0.5, 101), (0.49, 101), (0.1, 10)])
+def test_m_scale_finishes_slow_fixed_point_with_a_bracketed_root(breakdown, n):
+    # Close to exact fit or spanning six orders of magnitude. The former
+    # 200-step iteration silently returned residuals as large as 5.5e-4.
+    from scipy.optimize import brentq
+
+    x = np.r_[np.zeros(n // 2), np.geomspace(1, 1e6, n - n // 2)]
+    c = scale._tuning_for_breakdown(breakdown)
+
+    def equation(s):
+        u = np.minimum(np.abs(x / (s * c)), 1)
+        return np.mean(3 * u**2 - 3 * u**4 + u**6) - breakdown
+
+    oracle = brentq(equation, 1e-6, 1e8, xtol=1e-12)
+    fitted = scale.m_scale(x, center=0, breakdown=breakdown)
+    assert fitted == pytest.approx(oracle, rel=1e-8)
+    assert abs(equation(fitted)) < 1e-10
+
+
+def test_medcouple_tie_kernel_uses_average_of_middle_values():
+    # Brys et al., equations (2.1)-(2.3): kernels for [-3,0,0] are
+    # [-1,-1,-1,0,0,1]. R robustbase 0.99-7 returns -1 in this case.
+    assert medcouple([-3.0, 0.0, 0.0]) == -0.5
+    assert medcouple([3.0, 0.0, 0.0]) == 0.5

@@ -113,3 +113,8 @@ def test_nan_trimming_proportion_is_rejected():
     for estimator in (trimmed_mean, winsorized_mean):
         with pytest.raises(ValueError, match="proportion"):
             estimator([1, 2, 3], proportion=np.nan)
+
+
+def test_m_location_warns_instead_of_silently_accepting_nonconvergence():
+    with pytest.warns(RuntimeWarning, match="did not converge"):
+        m_location([1.0, 2.0, 2.0, 3.0, 4.0, 100.0], max_iter=1)

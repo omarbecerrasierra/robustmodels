@@ -4,6 +4,8 @@ Every function takes a one-dimensional sample of finite values and returns a
 float; an empty sample gives ``nan``.
 """
 
+import warnings
+
 import numpy as np
 
 from ._validation import as_1d, check_count, check_option, check_range
@@ -16,7 +18,8 @@ def hodges_lehmann(x):
     """Hodges-Lehmann estimator: the median of the Walsh averages.
 
     Median of ``(x_i + x_j) / 2`` over ``i <= j``. Breakdown point 29.3%,
-    Gaussian efficiency 95.5%. Computed exactly in O(n log n) time.
+    Asymptotic Gaussian efficiency 95.5%. The current sorted-row selection uses
+    O(n log^2 n) time and O(n) auxiliary storage.
 
     Parameters
     ----------
@@ -64,6 +67,12 @@ def trimmed_mean(x, proportion=0.1):
     float
         ``nan`` for an empty sample.
 
+    References
+    ----------
+    Tukey, J. W. and McLaughlin, D. H. (1963). Less vulnerable confidence and
+    significance procedures for location based on a single sample: Trimming/
+    Winsorization 1. *Sankhya, Series A*, 25(3), 331-352.
+
     Examples
     --------
     >>> from robustmodels.location import trimmed_mean
@@ -95,6 +104,12 @@ def winsorized_mean(x, proportion=0.1):
     -------
     float
         ``nan`` for an empty sample.
+
+    References
+    ----------
+    Tukey, J. W. and McLaughlin, D. H. (1963). Less vulnerable confidence and
+    significance procedures for location based on a single sample: Trimming/
+    Winsorization 1. *Sankhya, Series A*, 25(3), 331-352.
 
     Examples
     --------
@@ -179,7 +194,7 @@ def m_location(x, *, psi="huber", c=None, scale=None, tol=1e-9, max_iter=500):
     tol : float, default 1e-9
         Stop when the location changes by less than ``tol * s``.
     max_iter : int, default 500
-        Maximum number of iterations.
+        Maximum number of iterations. Warns if the stopping criterion is not met.
 
     Returns
     -------
@@ -219,6 +234,7 @@ def m_location(x, *, psi="huber", c=None, scale=None, tol=1e-9, max_iter=500):
         if abs(updated - location) < tol * scale:
             return float(updated)
         location = updated
+    warnings.warn("m_location did not converge within max_iter", RuntimeWarning, stacklevel=2)
     return float(location)
 
 

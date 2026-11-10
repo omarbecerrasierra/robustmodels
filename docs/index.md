@@ -45,6 +45,7 @@ The covariance estimators are scikit-learn estimators:
 | --- | --- |
 | [Location](location.md) | Hodges-Lehmann, M-estimators, tau location, trimmed and winsorized means |
 | [Scale and skewness](scale.md) | MAD, Qn, Sn, Pn, tau scale, M-scale, medcouple and tail weights |
+| [Method references](references.md) | Scientific sources, formulas and R conventions |
 | [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, S- and MM-estimators; outlier detection |
 
 Each page explains how to choose and use the estimators, then documents every
@@ -69,5 +70,6 @@ example.
 location
 scale
 covariance
+references
 changelog
 ```

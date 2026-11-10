@@ -14,8 +14,10 @@ and tail weight, in `robustmodels.scale`.
 | `tau_scale` | | | The scale used by `OGK` |
 | `m_scale` | `breakdown` | | The scale minimized by S-estimators |
 
-All of them estimate the standard deviation at the normal model
-(`consistency=True`).
+The consistency calibration targets the normal standard deviation
+asymptotically. Efficiency and breakdown percentages in this table are
+asymptotic values, not finite-sample guarantees. `m_scale` is always calibrated;
+the other scale estimators expose `consistency=True`.
 
 ## Use
 
@@ -45,8 +47,9 @@ One outlier in six is 16.7% of the sample, above the breakdown point of Pn:
 
 ### Corrections
 
-`consistency=False` returns the raw statistic, without the factor that makes it
-estimate the standard deviation:
+`consistency=False` disables the normal-consistency multiplier. For Qn, Sn and
+Pn the finite correction is independent: disable `finite_correction` as well
+to obtain the raw order statistic. For example, the default uncorrected MAD is:
 
 ```pycon
 >>> scale.mad(x, consistency=False)
@@ -54,7 +57,7 @@ estimate the standard deviation:
 
 ```
 
-Qn, Sn and Pn also apply a finite-sample correction by default, which removes
+Qn, Sn and Pn also apply a finite-sample correction by default, which reduces
 their bias in small normal samples; `mad` offers it with
 `finite_correction=True`. Disable it to get the asymptotic version:
 
@@ -77,6 +80,39 @@ and right medcouples measure the weight of each tail.
 (0.0556, 0.2458)
 
 ```
+
+## Numerical conventions and sources
+
+The small-sample factors are fitted or simulated approximations; they do not
+make every finite sample unbiased. They target normal data and the documented
+center/quantile conventions. MAD's finite factors assume the sample median as
+center; they are not calibrated for an arbitrary supplied center.
+
+Qn uses the exact normal-quantile constant instead of robustbase's rounded
+2.21914. robustbase's Qn C routine also casts some selection pivots to single
+precision, so even unscaled results can differ around `1e-8`. Sn uses the
+low median of high medians, not averages of middle distances.
+
+Pn uses inverse empirical quantiles (`type=1` in R), including the author's
+finite correction factors. Its normal constant is `1/(sqrt(2)*Phi^-1(3/4))`;
+the author's reference R code uses the rounded reciprocal `1/0.9539`.
+
+For the medcouple, the tie kernel follows Brys et al. (2004), equations
+(2.1)–(2.3). An even number of kernels uses the average of the two middle
+values. For `[-3, 0, 0]`, this definition gives `-0.5`, while robustbase 0.99-7
+returns `-1`; the same issue can propagate to `lmc` and `rmc`.
+
+The current generic sorted-row selector used by Qn, Pn and medcouple has an
+`O(n log² n)` time bound and `O(n)` auxiliary storage. Sn uses `O(n log n)` time.
+The existence of an `O(n log n)` algorithm in a paper does not establish that
+bound for a different implementation. "Exact" order-statistic calculations
+still use floating-point arithmetic.
+
+Sources: [Rousseeuw–Croux](references.md#rc93),
+[Tarr–Müller–Weber](references.md#tmw12),
+[Brys–Hubert–Struyf](references.md#bhs04),
+[tail weights](references.md#bhs06), and [Maronna–Zamar](references.md#mz02).
+The [source map](references.md#method-to-source-map) covers every public method.
 
 ## Reference
 

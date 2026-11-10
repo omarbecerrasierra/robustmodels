@@ -14,6 +14,7 @@ extensions = [
     "sphinx.ext.viewcode",
 ]
 exclude_patterns = ["_build"]
+myst_heading_anchors = 3
 
 autodoc_member_order = "bysource"
 add_module_names = False

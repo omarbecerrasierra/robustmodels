@@ -67,8 +67,10 @@ class MCD(_RobustCovariance):
     Mean and covariance of the ``h`` observations whose covariance matrix has the
     smallest determinant, scaled for consistency at the normal model. The
     reweighting step then recomputes both from the observations whose squared
-    robust distance is below the 0.975 chi-square quantile. Breakdown point
-    ``(n - h + 1) / n``, about 50% for ``alpha = 0.5``. Needs ``n > p``; use
+    robust distance is below the 0.975 chi-square quantile. In general position,
+    the exact raw estimator has breakdown ``min(n - h + 1, h - p) / n``,
+    approaching 50% for ``alpha = 0.5`` and fixed ``p``. The multivariate
+    search does not certify a global minimum. Needs ``n > p``; use
     :class:`MRCD` otherwise. If ``h`` observations lie on a hyperplane, a
     ``RuntimeWarning`` reports the exact fit and the raw estimates are kept.
 
@@ -297,12 +299,38 @@ def _univariate_mcd(z, h):
     """Exact MCD for p = 1: the window of h sorted values with the least variance."""
     order = np.argsort(z, kind="stable")
     sorted_values = z[order]
-    sums = np.concatenate([[0], np.cumsum(sorted_values)])
-    square_sums = np.concatenate([[0], np.cumsum(sorted_values**2)])
-    window_sums = sums[h:] - sums[:-h]
-    window_square_sums = square_sums[h:] - square_sums[:-h]
-    centered_sums = window_square_sums - window_sums**2 / h
-    start = int(np.argmin(centered_sums))
+    # Two stacks form a sliding queue of Welford summaries. Unlike subtracting
+    # prefix sums of squares, this never subtracts an extreme departed outlier
+    # from a small window variance. Each observation is pushed/popped O(1) times.
+    front, back = [], []
+
+    def push(stack, value):
+        count, mean, m2 = stack[-1][1:] if stack else (0, 0.0, 0.0)
+        delta = value - mean
+        updated_mean = mean + delta / (count + 1)
+        updated_m2 = m2 + delta * (value - updated_mean)
+        stack.append((value, count + 1, updated_mean, updated_m2))
+
+    best, start = np.inf, 0
+    for end, value in enumerate(sorted_values):
+        push(back, value)
+        if end >= h:
+            if not front:
+                while back:
+                    push(front, back.pop()[0])
+            front.pop()
+        if end < h - 1:
+            continue
+        if not front:
+            m2 = back[-1][3]
+        elif not back:
+            m2 = front[-1][3]
+        else:
+            _, n1, mean1, m21 = front[-1]
+            _, n2, mean2, m22 = back[-1]
+            m2 = m21 + m22 + (mean1 - mean2) ** 2 * n1 * n2 / h
+        if m2 < best:
+            best, start = m2, end - h + 1
     return np.sort(order[start : start + h])
 
 
@@ -453,8 +481,9 @@ class MRCD(_RobustCovariance):
     The data are standardized with the column medians and Qn scales. The
     ``h``-subset ``H`` then minimizes the determinant of
     ``K(H) = rho * I + (1 - rho) * c_alpha * cov(H)``, where ``c_alpha`` is the
-    MCD consistency factor and ``rho`` the smallest weight that keeps the
-    condition number of ``K`` below ``max_condition``. In the original units
+    MCD consistency factor. The common ``rho`` is selected from the initial
+    subsets by step 3.4 of Boudt et al. (2020), then held fixed during C-steps.
+    The search does not certify a global minimum. In the original units
     the regularization target is the diagonal matrix of squared Qn scales.
     Works with more variables than observations; when the subset covariance is
     already well-conditioned, ``rho = 0`` and the result is the raw MCD. There is
@@ -469,7 +498,9 @@ class MRCD(_RobustCovariance):
     alpha : float in [0.5, 1], default 0.5
         Coverage; the subset size is ``h = ceil(alpha * n)``.
     max_condition : float, default 50
-        Largest condition number allowed for the regularized covariance.
+        Condition-number bound used to calibrate the starting subsets in
+        standardized coordinates. It is not a hard bound on the final subset
+        or on the covariance in original units.
     rho : float in [0, 1), optional
         Fixed regularization weight, which replaces ``max_condition``. Needed when a
         starting subset has zero scatter.
@@ -554,11 +585,11 @@ class MRCD(_RobustCovariance):
             covariance = correction * _mean_cov(X[subset])[1]
             weights.append(_min_rho(covariance, self.max_condition))
         weights = np.array(weights)
-        cutoff = max(0.1, np.median(weights))
-        selected = [
-            subset for subset, weight in zip(starts, weights, strict=True) if weight <= cutoff
-        ]
-        return selected, weights[weights <= cutoff].max()
+        # Boudt et al. (2020), algorithm step 3.4. The median need not
+        # coincide with one of the six weights: do not round it down.
+        rho = weights.max() if weights.max() <= 0.1 else max(0.1, np.median(weights))
+        selected = [subset for subset, weight in zip(starts, weights, strict=True) if weight <= rho]
+        return selected, rho
 
 
 def _min_rho(covariance, max_condition):
@@ -608,11 +639,12 @@ def _mrcd_steps(X, subset, h, rho, correction, max_steps=200):
 class MVE(_RobustCovariance):
     """Minimum Volume Ellipsoid estimator (Rousseeuw 1985).
 
-    Center and scaled shape of the smallest ellipsoid that covers ``h``
-    observations. The search draws random ``(p + 1)``-subsets, then refits the
-    10 best ellipsoids to the ``h`` points they cover while the volume
-    decreases. The shape is scaled for consistency at the normal model and
-    reweighted as in :class:`MCD`. Breakdown point about 50% for
+    Approximation to the center and scaled shape of the smallest ellipsoid
+    that covers ``h`` observations. The search draws random ``(p + 1)``-subsets,
+    then refits the 10 best ellipsoids to the ``h`` points they cover while the
+    volume decreases. This heuristic does not certify a minimum-volume
+    ellipsoid, even on each selected subset. The shape is scaled for consistency
+    at the normal model and reweighted as in :class:`MCD`. Breakdown point about 50% for
     ``alpha = 0.5``. Needs ``n > p + 1``.
 
     Parameters
@@ -862,7 +894,8 @@ class SEstimator(_RobustCovariance):
     ``d_i = sqrt((x_i - mu)' Gamma^-1 (x_i - mu))``, where ``s`` solves
     ``mean(rho(d_i / s)) = breakdown``. The covariance is ``s^2 * Gamma``,
     consistent at the normal model. Computed with the FAST-S algorithm
-    (Salibián-Barrera, Van Aelst & Willems 2006). Affine equivariant; needs
+    (Salibián-Barrera, Van Aelst & Willems 2006), without a global-minimum
+    certificate. The theoretical estimator is affine equivariant; needs
     ``n > p``.
 
     Parameters
@@ -1014,7 +1047,11 @@ class MMEstimator(_RobustCovariance):
     breakdown : float in (0, 0.5], default 0.5
         Breakdown point of the initial S-estimator.
     efficiency : float in (0, 1), default 0.95
-        Gaussian efficiency of the shape.
+        Asymptotic Gaussian efficiency of the shape, not of the full covariance
+        or location. Must imply a final bisquare tuning constant at least as
+        large as the initial S tuning, to preserve the breakdown guarantee;
+        incompatible combinations of efficiency, breakdown and dimension raise
+        ``ValueError``.
     n_trials : int, default 500
         Random subsets of the initial S-estimator.
     max_iter : int, default 200
@@ -1075,6 +1112,12 @@ class MMEstimator(_RobustCovariance):
         X = self._validate(X)
         check_count("max_iter", self.max_iter)
         c = _tuning_for_shape_efficiency(self.efficiency, X.shape[1])
+        c0 = _tuning_for_breakdown(self.breakdown, X.shape[1])
+        if c < c0:
+            raise ValueError(
+                "efficiency is too low for this breakdown and dimension: "
+                "MM requires the final bisquare tuning constant >= the initial one"
+            )
         initial = SEstimator(
             breakdown=self.breakdown, n_trials=self.n_trials, random_state=self.random_state
         )
