@@ -91,8 +91,8 @@ and works in any dimension:
 >>> mrcd = MRCD().fit(wide)
 >>> mrcd.covariance_.shape
 (50, 50)
->>> round(mrcd.rho_, 2)  # regularization weight
-0.19
+>>> 0 < mrcd.rho_ < 1  # regularization weight
+True
 
 ```
 

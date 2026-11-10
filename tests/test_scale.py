@@ -144,6 +144,20 @@ def test_tau_scale_with_no_surviving_location_weights():
         assert tau_scale(x, c1=0.01, consistency=False) == pytest.approx(expected)
 
 
+def test_tuning_exists_for_small_breakdown_and_many_variables():
+    for breakdown, p in [(1e-6, 1), (1e-4, 200)]:
+        c = scale._tuning_for_breakdown(breakdown, p)
+        assert scale._expected_rho(c, p) == pytest.approx(breakdown, rel=1e-6)
+
+
+def test_non_numeric_parameters_raise_value_error():
+    with pytest.raises(ValueError, match="center"):
+        mad([1, 2, 3], center="a")
+    with pytest.raises(ValueError, match="breakdown"):
+        m_scale([1, 2, 3], breakdown=None)
+    assert str(lmc([1.0])) == "0.0"
+
+
 @pytest.mark.parametrize("breakdown", [0, 0.6, np.nan, np.inf])
 def test_invalid_m_scale_breakdown(breakdown):
     with pytest.raises(ValueError, match="breakdown"):

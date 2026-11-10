@@ -166,6 +166,21 @@ def test_mcd_rejects_too_many_features():
         MCD().fit(np.eye(3))
 
 
+def test_mrcd_singular_covariance_raises_a_clear_error():
+    X = np.random.default_rng(21).normal(size=(10, 30))
+    with pytest.raises(ValueError, match="larger rho"):
+        MRCD(rho=0).fit(X)
+
+
+def test_reweighting_that_keeps_every_point_gives_the_sample_covariance():
+    # Checked against robustbase::covMcd, which applies no factor without truncation.
+    X = np.random.default_rng(3).uniform(-1, 1, size=(12, 2))
+    fitted = MCD(algorithm="deterministic").fit(X)
+    assert fitted.support_.all()
+    np.testing.assert_allclose(fitted.location_, X.mean(axis=0), atol=1e-12)
+    np.testing.assert_allclose(fitted.covariance_, np.cov(X, rowvar=False))
+
+
 def test_mrcd_rejects_a_single_observation_subset():
     with pytest.raises(ValueError, match="at least two"):
         MRCD().fit([[1.0], [2.0]])
