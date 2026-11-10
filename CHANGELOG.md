@@ -14,5 +14,5 @@ First release.
   naming the parameter.
 - Documentation at https://omarbecerrasierra.github.io/robustmodels/, with a user
   guide and a reference for every function and class; its examples run as tests.
-- CI tests the installed wheel on Python 3.10, 3.13 and 3.14 and publishes
+- CI tests the installed wheel on Python 3.10 to 3.14 and publishes
   tagged releases to PyPI with trusted publishing.

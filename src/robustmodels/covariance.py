@@ -460,6 +460,10 @@ class MRCD(_RobustCovariance):
     already well-conditioned, ``rho = 0`` and the result is the raw MCD. There is
     no reweighting step.
 
+    With more variables than observations the starting subsets come from
+    eigenvectors that are not unique, so results can differ slightly between
+    platforms and linear algebra libraries.
+
     Parameters
     ----------
     alpha : float in [0.5, 1], default 0.5
@@ -525,9 +529,12 @@ class MRCD(_RobustCovariance):
         standardized = (X - center) / scale
         correction = mcd_consistency(p, h / n)
         starts, rho = self._starting_subsets(standardized, h, correction)
-        location, covariance, subset = _best_regularized_subset(
-            standardized, starts, h, rho, correction
-        )
+        try:
+            location, covariance, subset = _best_regularized_subset(
+                standardized, starts, h, rho, correction
+            )
+        except np.linalg.LinAlgError:
+            raise ValueError("MRCD covariance is singular; pass a larger rho") from None
         self.h_, self.rho_ = h, float(rho)
         self.support_ = np.isin(np.arange(n), subset)
         location = center + scale * location
@@ -1151,14 +1158,17 @@ def _reweight(X, location, cov, quantile=0.975):
     """Mean and covariance of the points with ``d^2 < chi2_p(quantile)``.
 
     The covariance is made consistent for that cutoff (not for the fraction
-    actually kept, which outliers would distort).
+    actually kept, which outliers would distort). If every point is kept, the
+    sample covariance is returned unchanged, as in robustbase.
     """
     p = X.shape[1]
     keep = _mahalanobis_sq(X, location, cov) < chi2.ppf(quantile, p)
     if keep.sum() <= p:
         return location, cov, keep
     loc, cov = _mean_cov(X[keep])
-    return loc, cov * mcd_consistency(p, quantile), keep
+    if not keep.all():
+        cov = cov * mcd_consistency(p, quantile)
+    return loc, cov, keep
 
 
 def _gk_covariance(X, scale_fn):

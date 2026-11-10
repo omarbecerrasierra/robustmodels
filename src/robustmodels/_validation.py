@@ -1,5 +1,7 @@
 """Checks for finite samples and estimator parameters."""
 
+from numbers import Real
+
 import numpy as np
 
 
@@ -15,6 +17,8 @@ def as_1d(x):
 
 def check_range(name, value, low, high, low_open=False, high_open=False):
     """Raise ``ValueError`` unless ``value`` lies in the interval ``[low, high]``."""
+    if not isinstance(value, Real):
+        raise ValueError(f"{name} must be a number, got {value!r}")
     below = value <= low if low_open else value < low
     above = value >= high if high_open else value > high
     if not np.isfinite(value) or below or above:

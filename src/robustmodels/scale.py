@@ -526,7 +526,8 @@ def _expected_rho(c, p=1):
 def _tuning_for_breakdown(breakdown=0.5, p=1):
     """``c`` with ``E[rho_c] = breakdown``: consistent scale with that breakdown point."""
     check_range("breakdown", breakdown, 0, 0.5, low_open=True)
-    return optimize.brentq(lambda c: _expected_rho(c, p) - breakdown, 1e-3, 1e3, xtol=1e-14)
+    upper = 10 * np.sqrt((p + 4) / breakdown)  # E[rho_c] < breakdown there
+    return optimize.brentq(lambda c: _expected_rho(c, p) - breakdown, 1e-3, upper, xtol=1e-14)
 
 
 def _shape_efficiency(c, p):
@@ -629,7 +630,7 @@ def lmc(x):
     x = as_1d(x)
     if x.size == 0:
         return np.nan
-    return -medcouple(x[x <= np.median(x)])
+    return 0.0 - medcouple(x[x <= np.median(x)])
 
 
 def rmc(x):
