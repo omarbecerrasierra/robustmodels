@@ -495,7 +495,7 @@ def _mscale_bisquare(residuals, c, breakdown, s0=None, tol=1e-10, max_iter=200):
     if scale <= 0:
         scale = np.median(positive) / 0.6745
     for _ in range(max_iter):
-        if scale <= 0:
+        if scale <= 0:  # pragma: no cover (only if rho underflows to zero)
             return 0.0
         average_loss = np.mean(_rho(residuals / scale, c))
         updated = scale * np.sqrt(average_loss / breakdown)

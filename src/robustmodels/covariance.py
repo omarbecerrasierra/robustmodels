@@ -625,7 +625,7 @@ def _best_regularized_subset(X, starts, h, rho, correction):
 
 def _mrcd_steps(X, subset, h, rho, correction, max_steps=200):
     """Concentration steps with the same regularization weight at every step."""
-    for _ in range(max_steps):
+    for _ in range(max_steps):  # pragma: no branch (C-steps stop long before the cap)
         location, covariance = _regularized_estimates(X, subset, rho, correction)
         distances = _mahalanobis_sq(X, location, covariance)
         updated = np.sort(np.argpartition(distances, h - 1)[:h])
@@ -749,7 +749,7 @@ def _ellipsoid(X, location, covariance, h):
 
 def _refine_ellipsoid(X, candidate, h):
     """Refit the covered h points while the ellipsoid volume decreases."""
-    for _ in range(100):
+    for _ in range(100):  # pragma: no branch (volumes stop decreasing long before the cap)
         volume, _, _, distances = candidate
         subset = np.argpartition(distances, h - 1)[:h]
         location, covariance = _mean_cov(X[subset])
@@ -1010,7 +1010,7 @@ def _s_steps(X, location, shape, c, breakdown, n_steps, tol=1e-10):
         new_location, new_shape = _weighted_shape(X, weights)
         new_distances = np.sqrt(_mahalanobis_sq(X, new_location, new_shape))
         new_scale = _mscale_bisquare(new_distances, c, breakdown, s0=scale)
-        if new_scale > scale:
+        if new_scale > scale:  # pragma: no cover (rounding only: S-steps decrease the scale)
             break
         converged = scale - new_scale <= tol * scale
         location, shape = new_location, new_shape
@@ -1141,7 +1141,7 @@ def _refine_shape(X, location, shape, scale, c, max_iter):
         new_location, new_shape = _weighted_shape(X, weights)
         new_distances = np.sqrt(_mahalanobis_sq(X, new_location, new_shape))
         new_loss = np.mean(_rho(new_distances / scale, c))
-        if new_loss > loss:
+        if new_loss > loss:  # pragma: no cover (rounding only: IRLS decreases the loss)
             break
         converged = loss - new_loss <= 1e-12
         location, shape, distances, loss = new_location, new_shape, new_distances, new_loss

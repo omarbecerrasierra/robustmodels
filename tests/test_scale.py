@@ -235,3 +235,12 @@ def test_medcouple_tie_kernel_uses_average_of_middle_values():
     # [-1,-1,-1,0,0,1]. R robustbase 0.99-7 returns -1 in this case.
     assert medcouple([-3.0, 0.0, 0.0]) == -0.5
     assert medcouple([3.0, 0.0, 0.0]) == 0.5
+
+
+def test_skewness_and_tail_weight_of_an_empty_sample_are_nan():
+    for estimator in (medcouple, lmc, rmc):
+        assert np.isnan(estimator([]))
+
+
+def test_tau_scale_is_zero_when_more_than_half_the_values_are_tied():
+    assert tau_scale([3.0, 3.0, 3.0, 3.0, 10.0]) == 0.0

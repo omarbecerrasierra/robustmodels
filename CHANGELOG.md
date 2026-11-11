@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 (unreleased)
+## 0.1.1 (2026-11-11)
 
 - Stabilize univariate MCD window variances in the presence of extreme outliers.
 - Finish slow M-scale iterations with a bracketed root solver.
@@ -9,6 +9,10 @@
 - Warn when M-location reaches its iteration limit without convergence.
 - Add method citations and clarify finite-sample, complexity and optimization limits.
 
+- Redesign the PyPI overview with worked examples and an estimator selection guide.
+- Move development and release instructions to `CONTRIBUTING.md`.
+- Test every line and branch, require 100% coverage in CI, and report it to Codecov.
+- Add coverage and download badges.
 - Link Tarr's thesis through its permanent University of Sydney handle.
 - Add `CITATION.cff`.
 

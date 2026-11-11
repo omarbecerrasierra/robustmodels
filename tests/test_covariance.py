@@ -5,7 +5,16 @@ import pytest
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 import reference as ref
-from robustmodels.covariance import MCD, MRCD, MVE, OGK, MMEstimator, SEstimator, h_alpha_n
+from robustmodels.covariance import (
+    MCD,
+    MRCD,
+    MVE,
+    OGK,
+    MMEstimator,
+    SEstimator,
+    h_alpha_n,
+    mcd_small_sample,
+)
 from robustmodels.scale import qn
 
 ESTIMATORS = [
@@ -351,3 +360,103 @@ def test_mm_preserves_s_scale_and_decreases_final_loss(seed):
     w = np.maximum(1 - u2, 0) ** 2
     score = np.sum(w[:, None] * (X - f.location_), axis=0) / w.sum()
     assert np.max(np.abs(score)) < 1e-4
+
+
+def test_mcd_small_sample_factor_is_continuous_and_vanishes_at_full_coverage():
+    for p, n in [(2, 30), (5, 60)]:
+        near = mcd_small_sample(p, n, np.nextafter(0.875, 1))
+        assert near == pytest.approx(mcd_small_sample(p, n, 0.875))
+        assert mcd_small_sample(p, n, 1.0) == 1.0
+
+
+def test_fast_mcd_on_a_line_returns_an_exact_fit():
+    X = np.column_stack([np.arange(10.0), np.arange(10.0)])
+    with pytest.warns(RuntimeWarning, match="exact fit"):
+        MCD(random_state=0).fit(X)
+
+
+@pytest.mark.parametrize(
+    "estimator, n, message",
+    [(MVE(), 3, "MVE needs n > p \\+ 1"), (SEstimator(), 2, "S-estimation needs n > p")],
+)
+def test_too_few_observations_raise_a_clear_error(estimator, n, message):
+    X = np.random.default_rng(3).normal(size=(n, 2))
+    with pytest.raises(ValueError, match=message):
+        estimator.fit(X)
+
+
+@pytest.mark.parametrize("estimator", [MVE(random_state=0), OGK()])
+def test_without_reweighting_the_raw_estimates_are_returned(estimator):
+    X = np.random.default_rng(5).normal(size=(40, 2))
+    estimator.set_params(reweighting=False).fit(X)
+    np.testing.assert_array_equal(estimator.location_, estimator.raw_location_)
+    np.testing.assert_array_equal(estimator.covariance_, estimator.raw_covariance_)
+
+
+def test_ogk_rejects_degenerate_inputs():
+    X = np.random.default_rng(9).normal(size=(40, 2))
+    with pytest.raises(ValueError, match="beta is too small"):
+        OGK(beta=1e-12).fit(X)
+    X[:25, 0] = 1.0
+    with pytest.raises(ValueError, match="zero robust scale"):
+        OGK().fit(X)
+
+
+@pytest.mark.parametrize("estimator", [SEstimator(random_state=0), MMEstimator(random_state=0)])
+def test_s_and_mm_exact_fit_raise_a_clear_error(estimator):
+    X = np.random.default_rng(0).normal(size=(40, 2))
+    X[:30] = 0.0
+    with pytest.raises(ValueError, match="singular scatter"):
+        estimator.fit(X)
+
+
+def test_legacy_random_state_is_reproducible():
+    X = np.random.default_rng(11).normal(size=(40, 3))
+    first = MCD(random_state=np.random.RandomState(0)).fit(X)
+    second = MCD(random_state=np.random.RandomState(0)).fit(X)
+    np.testing.assert_array_equal(first.covariance_, second.covariance_)
+
+
+def test_mrcd_regularization_that_rounds_to_one_raises():
+    from robustmodels.covariance import _min_rho
+
+    # Exactly rho < 1, but 4 + 2**-52 rounds to 4, so the computed rho is 1.
+    with pytest.raises(ValueError, match="too close to 1"):
+        _min_rho(np.diag([0.0, 4.0]), np.nextafter(1, 2))
+
+
+def test_mve_concentrates_on_a_majority_of_repeated_rows():
+    X = np.random.default_rng(0).normal(size=(40, 2))
+    X[:30] = 0.0
+    f = MVE(random_state=0).fit(X)
+    np.testing.assert_array_equal(f.location_, [0.0, 0.0])
+    np.testing.assert_array_equal(f.support_, np.arange(40) < 30)
+
+
+def test_mm_iteration_limit_stops_before_convergence():
+    from robustmodels.scale import _rho, _tuning_for_shape_efficiency
+
+    X = np.random.default_rng(0).normal(size=(40, 2))
+    one_step = MMEstimator(max_iter=1, random_state=0).fit(X)
+    converged = MMEstimator(random_state=0).fit(X)
+    c = _tuning_for_shape_efficiency(converged.efficiency, X.shape[1])
+    loss = [np.mean(_rho(np.sqrt(f.dist_), c)) for f in (one_step, converged)]
+    assert loss[1] < loss[0]
+
+
+def test_degenerate_steps_keep_their_inputs():
+    from robustmodels.covariance import _refine_shape, _reweight, _s_steps, _weighted_shape
+
+    X = np.zeros((40, 2))
+    X[30:] = np.random.default_rng(0).normal(size=(10, 2))
+    location, shape = np.zeros(2), np.eye(2)
+    # More than half the points sit at the location, so the M-scale is zero.
+    new_location, new_shape, scale = _s_steps(X, location, shape, 1.5, 0.5, 10)
+    assert new_location is location and new_shape is shape and scale == 0
+    new_location, new_shape = _refine_shape(X, location, shape, 0.0, 1.5, 10)
+    assert new_location is location and new_shape is shape
+    with pytest.raises(ValueError, match="zero bisquare weight"):
+        _weighted_shape(X, np.zeros(40))
+    far = np.full(2, 100.0)
+    kept_location, kept_cov, keep = _reweight(X, far, shape)
+    assert kept_location is far and kept_cov is shape and not keep.any()
