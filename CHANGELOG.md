@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add the Zenodo DOI to the README and `CITATION.cff`.
+
 ## 0.1.2 (2026-11-12)
 
 - Add a roadmap of planned methods.

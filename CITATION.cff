@@ -8,6 +8,7 @@ authors:
     orcid: "https://orcid.org/0009-0004-6376-5649"
 version: 0.1.2
 date-released: "2026-11-12"
+doi: 10.5281/zenodo.24169655
 license: BSD-3-Clause
 repository-code: "https://github.com/omarbecerrasierra/robustmodels"
 url: "https://omarbecerrasierra.github.io/robustmodels/"
