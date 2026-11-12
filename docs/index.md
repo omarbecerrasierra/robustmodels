@@ -47,7 +47,7 @@ The covariance estimators are scikit-learn estimators:
 | [Scale and skewness](scale.md) | MAD, Qn, Sn, Pn, tau scale, M-scale, medcouple and tail weights |
 | [Method references](references.md) | Scientific sources, formulas and R conventions |
 | [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, S- and MM-estimators; outlier detection |
-| [Regression](regression.md) | Least trimmed squares (LTS) regression; outlier detection |
+| [Regression](regression.md) | MM, S and least trimmed squares (LTS) regression; outlier detection |
 
 Each page explains how to choose and use the estimators, then documents every
 function and class: definition, parameters, return value, references and an

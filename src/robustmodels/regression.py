@@ -14,14 +14,41 @@ from sklearn.utils.validation import check_is_fitted, validate_data
 
 from ._validation import as_generator, check_count
 from .covariance import h_alpha_n, mcd_consistency
+from .scale import (
+    _bisquare_weights,
+    _mscale_bisquare,
+    _tuning_for_breakdown,
+    _tuning_for_efficiency,
+    mad,
+)
 
-__all__ = ["LTSRegressor"]
+__all__ = ["LTSRegressor", "MMRegressor", "SRegressor"]
 
 # Residuals with |r / scale| above this get weight 0 (two-sided 2.5% per tail).
 _CUTOFF = stats.norm.ppf(0.9875)
 
 
-class LTSRegressor(RegressorMixin, BaseEstimator):
+class _RobustRegressor(RegressorMixin, BaseEstimator):
+    """Base class: input checks, the design matrix and ``predict``."""
+
+    def _validated_design(self, X, y):
+        X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True, ensure_min_samples=2)
+        design = _design(X, self.fit_intercept)
+        n, p = design.shape
+        if n <= p:
+            raise ValueError(f"needs more observations than coefficients (got n={n}, p={p})")
+        if np.linalg.matrix_rank(design) < p:
+            raise ValueError("X is singular: its columns (and the intercept) are collinear")
+        return design, y
+
+    def predict(self, X):
+        """Predicted values ``X @ coef_ + intercept_``."""
+        check_is_fitted(self)
+        X = validate_data(self, X, dtype=np.float64, reset=False)
+        return X @ self.coef_ + self.intercept_
+
+
+class LTSRegressor(_RobustRegressor):
     """Least Trimmed Squares regression (Rousseeuw 1984).
 
     Least squares fit to the ``h`` observations with the smallest sum of squared
@@ -115,15 +142,10 @@ class LTSRegressor(RegressorMixin, BaseEstimator):
 
     def fit(self, X, y):
         """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
-        X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True, ensure_min_samples=2)
         check_count("n_trials", self.n_trials)
-        design = _design(X, self.fit_intercept)
+        design, y = self._validated_design(X, y)
         n, p = design.shape
-        if n <= p:
-            raise ValueError(f"LTS needs more observations than coefficients (got n={n}, p={p})")
         h = h_alpha_n(self.alpha, n, p)
-        if np.linalg.matrix_rank(design) < p:
-            raise ValueError("X is singular: its columns (and the intercept) are collinear")
         if h == n:
             subset = np.arange(n)
         else:
@@ -133,12 +155,6 @@ class LTSRegressor(RegressorMixin, BaseEstimator):
         coef, self.scale_, self.support_ = self._reweighted_fit(design, y, coef)
         self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
         return self
-
-    def predict(self, X):
-        """Predicted values ``X @ coef_ + intercept_``."""
-        check_is_fitted(self)
-        X = validate_data(self, X, dtype=np.float64, reset=False)
-        return X @ self.coef_ + self.intercept_
 
     def _raw_fit(self, design, y, subset):
         n, p = design.shape
@@ -181,6 +197,211 @@ class LTSRegressor(RegressorMixin, BaseEstimator):
             return 1.0
         slopes = p - 1 if self.fit_intercept else p
         return _lts_small_sample(slopes, n, self.alpha, self.fit_intercept, reweighted)
+
+
+class SRegressor(_RobustRegressor):
+    """S-estimator of regression (Rousseeuw & Yohai 1984).
+
+    Coefficients that minimize an M-estimator of the residual scale with Tukey's
+    bisquare loss, found with FAST-S (Salibian-Barrera & Yohai 2006). The scale
+    ``s`` solves ``sum(rho(r_i / s)) / (n - p) = breakdown``, with ``p`` the
+    number of coefficients; the ``n - p`` denominator reduces small-sample bias
+    (Maronna et al. 2019) and is also used by R's ``lmrob``. The
+    bisquare constant makes the scale consistent at the normal model. At
+    ``breakdown = 0.5`` the Gaussian efficiency is only about 29%; use
+    :class:`MMRegressor` for efficient estimates. The search does not certify a
+    global minimum. If more than about half of the residuals can be made zero,
+    a ``RuntimeWarning`` reports the exact fit and the scale is 0.
+
+    Parameters
+    ----------
+    breakdown : float in (0, 0.5], default 0.5
+        Asymptotic breakdown point.
+    fit_intercept : bool, default True
+        Add an intercept.
+    n_trials : int, default 500
+        Random elemental starting subsets.
+    n_best : int, default 5
+        Candidates refined to convergence.
+    k_steps : int, default 2
+        Refinement steps applied to every start.
+    max_iter : int, default 500
+        Maximum refinement steps for the best candidates. Refinement stops when
+        the coefficients change by less than ``1e-7`` relative, as in ``lmrob``;
+        a ``RuntimeWarning`` reports non-convergence.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of FAST-S.
+
+    Attributes
+    ----------
+    coef_ : ndarray of shape (n_features,)
+        Slopes.
+    intercept_ : float
+        Intercept; 0 without ``fit_intercept``.
+    scale_ : float
+        M-scale of the residuals.
+    n_iter_ : int
+        Refinement steps of the selected candidate; 0 for an exact fit.
+
+    References
+    ----------
+    Rousseeuw, P. J. and Yohai, V. J. (1984). Robust regression by means of
+    S-estimators. In *Robust and Nonlinear Time Series Analysis*, Lecture Notes
+    in Statistics 26, 256-272. Springer.
+
+    Salibian-Barrera, M. and Yohai, V. J. (2006). A fast algorithm for
+    S-regression estimates. *Journal of Computational and Graphical
+    Statistics*, 15(2), 414-427.
+
+    Maronna, R. A., Martin, R. D., Yohai, V. J. and Salibian-Barrera, M. (2019).
+    *Robust Statistics: Theory and Methods (with R)*, 2nd edition. Wiley.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.regression import SRegressor
+    >>> rng = np.random.default_rng(0)
+    >>> X = rng.normal(size=(100, 1))
+    >>> y = 1 + 2 * X[:, 0] + rng.normal(scale=0.5, size=100)
+    >>> y[:20] += 15  # twenty outliers
+    >>> s = SRegressor(random_state=0).fit(X, y)
+    >>> round(s.intercept_, 2), s.coef_.round(2).tolist()
+    (1.03, [2.04])
+    """
+
+    def __init__(
+        self,
+        *,
+        breakdown=0.5,
+        fit_intercept=True,
+        n_trials=500,
+        n_best=5,
+        k_steps=2,
+        max_iter=500,
+        random_state=None,
+    ):
+        self.breakdown = breakdown
+        self.fit_intercept = fit_intercept
+        self.n_trials = n_trials
+        self.n_best = n_best
+        self.k_steps = k_steps
+        self.max_iter = max_iter
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
+        for name in ("n_trials", "n_best", "k_steps", "max_iter"):
+            check_count(name, getattr(self, name))
+        c = _tuning_for_breakdown(self.breakdown)
+        design, y = self._validated_design(X, y)
+        steps = (self.n_trials, self.n_best, self.k_steps, self.max_iter)
+        fit = _fast_s(design, y, c, self.breakdown, steps, self.random_state)
+        scale, coef, self.n_iter_, converged = fit
+        _warn(scale, converged)
+        self.scale_ = scale
+        self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
+        return self
+
+
+class MMRegressor(_RobustRegressor):
+    """MM-estimator of regression (Yohai 1987).
+
+    Starts from the :class:`SRegressor` fit and keeps its scale fixed while
+    iteratively reweighted least squares lowers a bisquare loss with a larger
+    tuning constant. This keeps the breakdown point of the S-estimator and
+    reaches the requested Gaussian efficiency, as R's ``lmrob`` by default. The
+    final loss is a local minimum near the S fit; it is not a global search.
+
+    Parameters
+    ----------
+    breakdown : float in (0, 0.5], default 0.5
+        Breakdown point of the initial S-estimator.
+    efficiency : float in (0, 1), default 0.95
+        Asymptotic Gaussian efficiency of the coefficients. The final tuning
+        constant must not be smaller than the initial one; lower values raise
+        ``ValueError``.
+    fit_intercept : bool, default True
+        Add an intercept.
+    n_trials : int, default 500
+        Random starting subsets of the S-estimator.
+    max_iter : int, default 500
+        Maximum steps of each iterative stage (S refinement and MM); a
+        ``RuntimeWarning`` names the stage that did not converge.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of the S-estimator.
+
+    Attributes
+    ----------
+    coef_ : ndarray of shape (n_features,)
+        Final slopes.
+    intercept_ : float
+        Final intercept; 0 without ``fit_intercept``.
+    scale_ : float
+        Residual scale of the S-estimator, kept fixed.
+    s_coef_, s_intercept_ :
+        Coefficients of the initial S-estimator.
+    n_iter_ : int
+        Iterations of the MM stage; 0 for an exact fit.
+
+    References
+    ----------
+    Yohai, V. J. (1987). High breakdown-point and high efficiency robust
+    estimates for regression. *The Annals of Statistics*, 15(2), 642-656.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.regression import MMRegressor
+    >>> rng = np.random.default_rng(0)
+    >>> X = rng.normal(size=(100, 1))
+    >>> y = 1 + 2 * X[:, 0] + rng.normal(scale=0.5, size=100)
+    >>> y[:20] += 15  # twenty outliers
+    >>> mm = MMRegressor(random_state=0).fit(X, y)
+    >>> round(mm.intercept_, 2), mm.coef_.round(2).tolist()
+    (0.96, [2.04])
+    """
+
+    def __init__(
+        self,
+        *,
+        breakdown=0.5,
+        efficiency=0.95,
+        fit_intercept=True,
+        n_trials=500,
+        max_iter=500,
+        random_state=None,
+    ):
+        self.breakdown = breakdown
+        self.efficiency = efficiency
+        self.fit_intercept = fit_intercept
+        self.n_trials = n_trials
+        self.max_iter = max_iter
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
+        check_count("n_trials", self.n_trials)
+        check_count("max_iter", self.max_iter)
+        c0 = _tuning_for_breakdown(self.breakdown)
+        c = _tuning_for_efficiency(self.efficiency)
+        if c < c0:
+            raise ValueError(
+                "efficiency is too low for this breakdown: MM requires the final "
+                "bisquare tuning constant >= the initial one"
+            )
+        design, y = self._validated_design(X, y)
+        steps = (self.n_trials, 5, 2, self.max_iter)
+        scale, coef, _, converged = _fast_s(design, y, c0, self.breakdown, steps, self.random_state)
+        self.s_intercept_, self.s_coef_ = _split(coef, self.fit_intercept)
+        _warn(scale, converged)
+        self.n_iter_ = 0
+        if scale > 0:
+            coef, self.n_iter_, converged = _mm_steps(design, y, coef, scale, c, self.max_iter)
+            if not converged:
+                warnings.warn("MM did not converge within max_iter", RuntimeWarning, 2)
+        self.scale_ = scale
+        self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
+        return self
 
 
 def _design(X, fit_intercept):
@@ -230,6 +451,81 @@ def _lts_steps(design, y, coef, h, max_steps=200):
             break
         objective, subset, coef = new_objective, updated, new_coef
     return objective, subset, coef
+
+
+def _warn(scale, converged):
+    """Report an exact fit or an S refinement that did not converge."""
+    if scale == 0:
+        warnings.warn("exact fit: most residuals are zero; the scale is 0", RuntimeWarning, 3)
+    elif not converged:
+        warnings.warn("S did not converge within max_iter", RuntimeWarning, 3)
+
+
+def _weighted_least_squares(design, y, weights):
+    root = np.sqrt(weights)
+    return _least_squares(design * root[:, None], y * root)
+
+
+def _converged(old, new, tol):
+    return np.linalg.norm(new - old) <= tol * max(tol, np.linalg.norm(old))
+
+
+def _s_scale(residuals, c, breakdown, p, zero, s0=None):
+    """M-scale solving ``sum(rho(r / s)) / (n - p) = breakdown``; ``|r| <= zero`` counts as 0."""
+    residuals = np.where(np.abs(residuals) <= zero, 0.0, residuals)
+    n = len(residuals)
+    return _mscale_bisquare(residuals, c, breakdown * (n - p) / n, s0)
+
+
+def _fast_s(design, y, c, breakdown, steps, random_state):
+    """FAST-S: refine every elemental start a few steps, then the best to convergence.
+
+    Returns (scale, coef, n_iter, converged) of the best candidate.
+    """
+    n_trials, n_best, k_steps, max_iter = steps
+    rng = as_generator(random_state)
+    zero = 1e-10 * mad(y)  # robust to outliers and to a shift of y
+    candidates = []
+    for _ in range(n_trials):
+        start = _elemental_subset(design, rng)
+        coef = _least_squares(design[start], y[start])
+        candidate = _s_steps(design, y, coef, c, breakdown, zero, k_steps)
+        if candidate[0] == 0:  # exact fit: no smaller scale exists
+            return candidate
+        candidates.append(candidate)
+    candidates.sort(key=lambda candidate: candidate[0])
+    refined = [
+        _s_steps(design, y, coef, c, breakdown, zero, max_iter)
+        for _, coef, *_ in candidates[:n_best]
+    ]
+    return min(refined, key=lambda candidate: candidate[0])
+
+
+def _s_steps(design, y, coef, c, breakdown, zero, max_steps, tol=1e-7):
+    """IRWLS steps that lower the M-scale (Salibian-Barrera & Yohai 2006)."""
+    p = design.shape[1]
+    scale = _s_scale(y - design @ coef, c, breakdown, p, zero)
+    for step in range(1, max_steps + 1):
+        if scale == 0:
+            return scale, coef, step - 1, True
+        weights = _bisquare_weights((y - design @ coef) / scale, c)
+        new_coef = _weighted_least_squares(design, y, weights)
+        scale = _s_scale(y - design @ new_coef, c, breakdown, p, zero, scale)
+        if _converged(coef, new_coef, tol):
+            return scale, new_coef, step, True
+        coef = new_coef
+    return scale, coef, max_steps, False
+
+
+def _mm_steps(design, y, coef, scale, c, max_steps, tol=1e-7):
+    """IRWLS for the bisquare M-estimator with the scale fixed."""
+    for step in range(1, max_steps + 1):
+        weights = _bisquare_weights((y - design @ coef) / scale, c)
+        new_coef = _weighted_least_squares(design, y, weights)
+        if _converged(coef, new_coef, tol):
+            return new_coef, step, True
+        coef = new_coef
+    return coef, max_steps, False
 
 
 # Pison, Van Aelst & Willems (2002), LTS scale: curves f(n) = 1 - exp(a) / n**b,

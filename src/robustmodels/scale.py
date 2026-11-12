@@ -555,9 +555,8 @@ def _shape_efficiency(c, p):
     with ``psi(d) = d (1 - (d/c)^2)^2`` and ``d = ||Z||``.
     """
 
-    def m(a):  # E[d^a; d <= c]
-        g = np.exp(special.gammaln((p + a) / 2) - special.gammaln(p / 2))
-        return g * 2 ** (a / 2) * chi2.cdf(c * c, p + a)
+    def m(a):
+        return _truncated_moment(a, c, p)
 
     psi2_d2 = m(4) - 4 * m(6) / c**2 + 6 * m(8) / c**4 - 4 * m(10) / c**6 + m(12) / c**8
     dpsi_d2 = m(2) - 6 * m(4) / c**2 + 5 * m(6) / c**4
@@ -568,6 +567,31 @@ def _shape_efficiency(c, p):
 def _tuning_for_shape_efficiency(efficiency, p):
     check_range("efficiency", efficiency, 0, 1, low_open=True, high_open=True)
     return optimize.brentq(lambda c: _shape_efficiency(c, p) - efficiency, 0.5, 1e3, xtol=1e-12)
+
+
+def _truncated_moment(a, c, p):
+    """``E[d^a; d <= c]`` for ``d = ||Z||``, ``Z ~ N_p(0, I)``."""
+    g = np.exp(special.gammaln((p + a) / 2) - special.gammaln(p / 2))
+    return g * 2 ** (a / 2) * chi2.cdf(c * c, p + a)
+
+
+def _efficiency(c):
+    """Gaussian efficiency of the bisquare M-estimator of location or regression.
+
+    ``E[psi']^2 / E[psi^2]`` with ``psi(t) = t (1 - (t/c)^2)^2`` for ``|t| <= c``.
+    """
+
+    def m(a):
+        return _truncated_moment(a, c, 1)
+
+    dpsi = m(0) - 6 * m(2) / c**2 + 5 * m(4) / c**4
+    psi2 = m(2) - 4 * m(4) / c**2 + 6 * m(6) / c**4 - 4 * m(8) / c**6 + m(10) / c**8
+    return dpsi**2 / psi2
+
+
+def _tuning_for_efficiency(efficiency):
+    check_range("efficiency", efficiency, 0, 1, low_open=True, high_open=True)
+    return optimize.brentq(lambda c: _efficiency(c) - efficiency, 0.5, 1e3, xtol=1e-12)
 
 
 def medcouple(x):

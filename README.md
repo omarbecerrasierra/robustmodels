@@ -24,8 +24,8 @@ observations.
 - **Summarize a sample:** robust location, scale, skewness and tail-weight measures.
 - **Model multivariate data:** six location and covariance estimators, including
   regularized covariance for data with more variables than observations.
-- **Fit robust regressions:** least trimmed squares, resistant to vertical
-  outliers and bad leverage points.
+- **Fit robust regressions:** MM, S and least trimmed squares estimators,
+  resistant to vertical outliers and bad leverage points.
 - **Work with familiar tools:** NumPy-compatible inputs and the scikit-learn
   estimator interface for covariance and regression models.
 - **Inspect the methods:** documented formulas, scientific references, numerical
@@ -111,7 +111,8 @@ distances. Covariance estimators support `get_params`, `set_params` and
 
 ## Fit a robust regression
 
-Least trimmed squares fits the bulk of the data when some responses are wrong:
+Robust regression fits the bulk of the data when some responses are wrong.
+Least trimmed squares also tells you which observations it used:
 
 ```python
 import numpy as np
@@ -133,8 +134,10 @@ Outliers used: 0
 ```
 
 The true line is `1 + 2x`; least squares gives an intercept of 4.04 and a slope
-of 1.17. See the [regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
-for outlier detection and the scale estimate.
+of 1.17. `MMRegressor`, the default of R's `lmrob`, combines a 50% breakdown
+point with 95% efficiency under normal errors. See the
+[regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
+to choose an estimator and detect outliers.
 
 ## Choose an estimator
 
@@ -146,7 +149,7 @@ for outlier detection and the scale estimate.
 | Estimate covariance when observations outnumber variables | `MCD` | Supports random or deterministic starts. |
 | Estimate covariance when variables outnumber observations | `MRCD` | Regularizes toward an identity target in standardized coordinates. |
 | Explore other multivariate approaches | `OGK`, `MVE`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
-| Fit a linear regression with outliers | `LTSRegressor` | Least trimmed squares, then reweighted least squares. |
+| Fit a linear regression with outliers | `MMRegressor` | 50% breakdown and 95% efficiency; `LTSRegressor` and `SRegressor` are alternatives. |
 
 For example, regularized covariance can be fitted to a wide matrix:
 
@@ -173,7 +176,7 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.location` | `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean` |
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator` |
-| `robustmodels.regression` | `LTSRegressor` |
+| `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,

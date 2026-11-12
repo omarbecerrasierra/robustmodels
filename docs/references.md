@@ -28,6 +28,8 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw estimates also compared |
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
 | `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
+| `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
+| `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
 
 ## Bibliography
@@ -138,6 +140,25 @@ See the detailed treatment and bibliography in [VAR09](#var09).
 Rousseeuw, P. J. and Van Driessen, K. (1999). *A Fast Algorithm for the
 Minimum Covariance Determinant Estimator*. Technometrics, **41**(3), 212–223.
 [Author-hosted article](https://wis.kuleuven.be/stat/robust/papers/1999/rousseeuwvandriessen-fastalgorithmformcd-technomet.pdf).
+
+(ry84)=
+### RY84
+Rousseeuw, P. J. and Yohai, V. J. (1984). *Robust Regression by Means of
+S-Estimators*. In Robust and Nonlinear Time Series Analysis, Lecture Notes in
+Statistics 26, 256–272. Springer.
+[DOI](https://doi.org/10.1007/978-1-4615-7821-5_15).
+
+(sby06)=
+### SBY06
+Salibian-Barrera, M. and Yohai, V. J. (2006). *A Fast Algorithm for
+S-Regression Estimates*. Journal of Computational and Graphical Statistics,
+**15**(2), 414–427. [DOI](https://doi.org/10.1198/106186006X113629).
+
+(y87)=
+### Y87
+Yohai, V. J. (1987). *High Breakdown-Point and High Efficiency Robust Estimates
+for Regression*. The Annals of Statistics, **15**(2), 642–656.
+[DOI](https://doi.org/10.1214/aos/1176350366).
 
 (rvd06)=
 ### RVD06

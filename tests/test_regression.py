@@ -4,17 +4,31 @@ import numpy as np
 import pytest
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
-from robustmodels.regression import LTSRegressor, _lts_small_sample
+from robustmodels.regression import (
+    LTSRegressor,
+    MMRegressor,
+    SRegressor,
+    _lts_small_sample,
+    _s_scale,
+)
+from robustmodels.scale import _rho, _tuning_for_breakdown, _tuning_for_efficiency
 
 
 def expected_failures(estimator):
     # The check sets alpha=0.01, assuming a regularization strength; here alpha
     # is the LTS coverage in [0.5, 1], as in MCD and robustbase.
-    return {"check_regressors_train": "alpha is the coverage, not a penalty"}
+    if isinstance(estimator, LTSRegressor):
+        return {"check_regressors_train": "alpha is the coverage, not a penalty"}
+    return {}
 
 
 @parametrize_with_checks(
-    [LTSRegressor(random_state=0), LTSRegressor(fit_intercept=False, random_state=0)],
+    [
+        LTSRegressor(random_state=0),
+        LTSRegressor(fit_intercept=False, random_state=0),
+        SRegressor(n_trials=50, random_state=0),
+        MMRegressor(n_trials=50, random_state=0),
+    ],
     expected_failed_checks=expected_failures,
 )
 def test_sklearn_compatible(estimator, check):
@@ -153,3 +167,109 @@ def test_collinear_columns_raise_a_clear_error():
     x = np.arange(10.0)
     with pytest.raises(ValueError, match="singular"):
         LTSRegressor().fit(np.column_stack([x, 2 * x]), x)
+
+
+# S and MM regression
+
+C0 = _tuning_for_breakdown(0.5)
+
+
+def mean_loss(X, y, fit, c):
+    return np.mean(_rho((y - fit.predict(X)) / fit.scale_, c))
+
+
+@pytest.mark.parametrize("estimator", [SRegressor, MMRegressor])
+def test_s_and_mm_resist_outliers(estimator):
+    X, y = contaminated()
+    fit = estimator(random_state=0).fit(X, y)
+    np.testing.assert_allclose(np.r_[fit.intercept_, fit.coef_], [1, 1, 2], atol=0.3)
+
+
+def test_s_scale_solves_its_equation_and_is_minimal():
+    X, y = contaminated()
+    s = SRegressor(random_state=0).fit(X, y)
+    n, p = len(y), 3
+    assert np.sum(_rho((y - s.predict(X)) / s.scale_, C0)) / (n - p) == pytest.approx(0.5)
+    lts = LTSRegressor(random_state=0).fit(X, y)
+    ols = least_squares(X, y)[0]
+    truth = y - 1 - X @ [1.0, 2.0]
+    for residuals in (y - lts.predict(X), truth, y - ols[0] - X @ ols[1:]):
+        assert s.scale_ <= _s_scale(residuals, C0, 0.5, p, 0.0)
+
+
+def test_mm_starts_from_s_and_lowers_its_loss():
+    X, y = contaminated()
+    s = SRegressor(random_state=0).fit(X, y)
+    mm = MMRegressor(random_state=0).fit(X, y)
+    np.testing.assert_allclose(np.r_[mm.s_intercept_, mm.s_coef_], np.r_[s.intercept_, s.coef_])
+    assert mm.scale_ == s.scale_
+    c = _tuning_for_efficiency(0.95)
+    assert mean_loss(X, y, mm, c) <= mean_loss(X, y, s, c)
+
+
+@pytest.mark.parametrize("estimator", [SRegressor, MMRegressor])
+def test_s_and_mm_equivariance(estimator):
+    X, y = contaminated()
+    A = np.array([[2.0, 1.0], [0.5, -1.0]])
+    b = np.array([3.0, -2.0])
+    base = estimator(random_state=0).fit(X, y)
+    moved = estimator(random_state=0).fit(X @ A, -3 * (y + X @ b) + 5)
+    np.testing.assert_allclose(moved.coef_, np.linalg.solve(A, -3 * (base.coef_ + b)), rtol=1e-6)
+    assert moved.intercept_ == pytest.approx(-3 * base.intercept_ + 5, rel=1e-6)
+    assert moved.scale_ == pytest.approx(3 * base.scale_, rel=1e-6)
+
+
+def test_gaussian_efficiency_and_scale_consistency():
+    rng = np.random.default_rng(7)
+    slopes = {"ols": [], "s": [], "mm": []}
+    scales = []
+    for _ in range(200):
+        X = rng.normal(size=(100, 2))
+        y = X @ [1.0, 1.0] + rng.normal(size=100)
+        slopes["ols"].append(least_squares(X, y)[0][1:])
+        mm = MMRegressor(n_trials=10, random_state=0).fit(X, y)  # s_coef_: the S fit
+        slopes["s"].append(mm.s_coef_)
+        slopes["mm"].append(mm.coef_)
+        scales.append(mm.scale_)
+    variance = {k: np.var(v, axis=0).mean() for k, v in slopes.items()}
+    assert variance["ols"] / variance["mm"] == pytest.approx(0.95, abs=0.05)
+    assert variance["ols"] / variance["s"] == pytest.approx(0.287, abs=0.08)
+    assert np.mean(scales) == pytest.approx(1, abs=0.04)
+
+
+@pytest.mark.parametrize("estimator", [SRegressor, MMRegressor])
+def test_s_and_mm_exact_fit_warns(estimator):
+    X = np.arange(20.0)[:, None]
+    y = 3 * X[:, 0] + 1
+    y[:5] = [40, -7, 3, 100, 8]
+    with pytest.warns(RuntimeWarning, match="exact fit"):
+        fit = estimator(random_state=0).fit(X, y)
+    assert fit.scale_ == 0
+    assert (fit.intercept_, fit.coef_[0]) == pytest.approx((1, 3))
+
+
+def test_iteration_limits_name_the_stage():
+    X, y = contaminated()
+    with pytest.warns(RuntimeWarning, match="S did not converge"):
+        SRegressor(max_iter=1, random_state=0).fit(X, y)
+    with pytest.warns(RuntimeWarning) as record:
+        MMRegressor(max_iter=1, random_state=0).fit(X, y)
+    messages = {str(w.message) for w in record}
+    assert {"S did not converge within max_iter", "MM did not converge within max_iter"} <= messages
+
+
+@pytest.mark.parametrize(
+    "estimator, message",
+    [
+        (SRegressor(breakdown=0.7), "breakdown"),
+        (SRegressor(n_best=0), "n_best"),
+        (SRegressor(k_steps=0), "k_steps"),
+        (MMRegressor(efficiency=1.5), "efficiency"),
+        (MMRegressor(efficiency=0.2), "efficiency is too low"),
+        (MMRegressor(max_iter=0), "max_iter"),
+    ],
+)
+def test_invalid_s_and_mm_parameters(estimator, message):
+    X = np.random.default_rng(5).normal(size=(20, 2))
+    with pytest.raises(ValueError, match=message):
+        estimator.fit(X, X.sum(axis=1))

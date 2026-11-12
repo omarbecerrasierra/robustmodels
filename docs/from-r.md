@@ -55,8 +55,14 @@ attributes with a trailing underscore. For `covMcd`:
 
 | R | robustmodels |
 | --- | --- |
+| `robustbase::lmrob(y ~ X)` | `regression.MMRegressor().fit(X, y)` |
+| `robustbase::lmrob(y ~ X, method = "S")` | `regression.SRegressor().fit(X, y)` |
 | `robustbase::ltsReg(X, y)` | `regression.LTSRegressor().fit(X, y)` |
 | `robustbase::ltsReg(X, y, intercept = FALSE)` | `regression.LTSRegressor(fit_intercept=False).fit(X, y)` |
+
+`lmrob` results map to `intercept_`, `coef_` and `scale_`; its `init.S`
+coefficients are `MMRegressor`'s `s_intercept_` and `s_coef_`. `lmrob` also
+returns standard errors and tests, which robustmodels does not provide yet.
 
 | `ltsReg` result | robustmodels attribute |
 | --- | --- |

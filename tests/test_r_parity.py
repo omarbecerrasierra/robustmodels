@@ -5,7 +5,8 @@ robustbase and rrcov versions that produced them.
 Known differences: R rounds the consistency constants (e.g. 2.21914 for Qn),
 uses tolerance 1e-6 in huberM and an approximate medcouple.
 The LTS references use ltsReg with exhaustive search (nsamp = "exact"),
-except hbk (500 random starts).
+except hbk (500 random starts). S and MM references come from lmrob, which
+rounds its bisquare constants (1.54764, 4.685061): scales differ by about 3e-6.
 """
 
 import json
@@ -16,7 +17,7 @@ import pytest
 
 from robustmodels import location, scale
 from robustmodels.covariance import MCD, MRCD, OGK, MMEstimator, SEstimator, mcd_consistency
-from robustmodels.regression import LTSRegressor, _lts_small_sample
+from robustmodels.regression import LTSRegressor, MMRegressor, SRegressor, _lts_small_sample
 
 R = json.loads((Path(__file__).parent / "data" / "r_reference.json").read_text())
 UNI = R["univariate"]
@@ -103,3 +104,15 @@ def test_lts_small_sample_factors():
         args = int(row["p"]), int(row["n"]), row["alpha"], row["intercept"]
         assert _lts_small_sample(*args, False) == pytest.approx(row["raw"], rel=1e-12)
         assert _lts_small_sample(*args, True) == pytest.approx(row["rew"], rel=1e-12)
+
+
+@pytest.mark.parametrize("name", LTS_DATA)
+def test_s_and_mm_regression(name):
+    r = REG[name]["lmrob"]
+    X, y = np.array(REG[name]["X"]), np.array(REG[name]["y"])
+    s = SRegressor(random_state=0).fit(X, y)
+    assert s.scale_ <= r["s_scale"] * (1 + 1e-5)  # S minimizes the scale: never worse than R
+    if s.scale_ > r["s_scale"] * (1 - 1e-5):  # same optimum found
+        assert close(np.r_[s.intercept_, s.coef_], r["s_coef"], 1e-5)
+        mm = MMRegressor(random_state=0).fit(X, y)
+        assert close(np.r_[mm.intercept_, mm.coef_], r["mm_coef"], 1e-5)

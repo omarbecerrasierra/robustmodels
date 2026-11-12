@@ -28,12 +28,13 @@ Suggestions and use cases are welcome in
 - **Scale, skewness and tail weight:** MAD, Qn, Sn, Pn, tau scale, M-scale,
   medcouple and its left and right versions.
 - **Covariance:** MCD (FAST-MCD and DetMCD), MRCD, MVE, OGK, S and MM estimators.
-- **Regression:** least trimmed squares (FAST-LTS) with reweighting.
+- **Regression:** least trimmed squares (FAST-LTS) with reweighting, and S and
+  MM estimators (FAST-S).
 
-## Next: robust regression
+## Next: regression diagnostics and inference
 
-- S and MM regression.
-- Diagnostics: robust residuals, leverage and outlier maps.
+- Robust residuals, leverage and outlier maps.
+- Standard errors and tests for the regression coefficients.
 
 ## Later stages
 

@@ -53,7 +53,7 @@ it cannot be reached, and say why in the comment.
 | `location.py` | Location estimators | `scale.py`, `_validation.py` |
 | `scale.py` | Scale, skewness, correction factors and pairwise selection | `_validation.py` |
 | `covariance.py` | Covariance estimators and their fitting steps | `scale.py`, `_validation.py` |
-| `regression.py` | Regression estimators and their fitting steps | `covariance.py`, `_validation.py` |
+| `regression.py` | Regression estimators and their fitting steps | `covariance.py`, `scale.py`, `_validation.py` |
 | `_validation.py` | Input checks and the random generator helper | None |
 
 Each method and its steps stay together. `__init__.py` exposes the public
