@@ -8,6 +8,7 @@
 [![Coverage](https://codecov.io/gh/omarbecerrasierra/robustmodels/graph/badge.svg)](https://codecov.io/gh/omarbecerrasierra/robustmodels)
 [![Downloads](https://img.shields.io/pypi/dm/robustmodels)](https://pypistats.org/packages/robustmodels)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/omarbecerrasierra/robustmodels/blob/main/LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24169655.svg)](https://doi.org/10.5281/zenodo.24169655)
 
 [User guide](https://omarbecerrasierra.github.io/robustmodels/)
 · [Method references](https://omarbecerrasierra.github.io/robustmodels/references.html)
@@ -178,7 +179,9 @@ comparisons with R's robustbase and rrcov, and scikit-learn compatibility.
 - **Follow changes:** read the [changelog](https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md)
   and the [roadmap](https://github.com/omarbecerrasierra/robustmodels/blob/main/ROADMAP.md)
   of planned methods.
-- **Cite:** use the metadata in [CITATION.cff](https://github.com/omarbecerrasierra/robustmodels/blob/main/CITATION.cff)
-  or GitHub's “Cite this repository” option.
+- **Cite:** the DOI [10.5281/zenodo.24169655](https://doi.org/10.5281/zenodo.24169655)
+  refers to all versions; Zenodo also lists a DOI for each release. Citation
+  metadata are in [CITATION.cff](https://github.com/omarbecerrasierra/robustmodels/blob/main/CITATION.cff)
+  and GitHub's “Cite this repository” option.
 
 Released under the [BSD 3-Clause license](https://github.com/omarbecerrasierra/robustmodels/blob/main/LICENSE).
