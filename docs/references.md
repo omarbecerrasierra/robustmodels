@@ -1,6 +1,6 @@
 # Method references
 
-These references describe the methods implemented in the **current** three
+These references describe the methods implemented in the **current**
 modules. They are separate from citing the robustmodels software itself via
 `CITATION.cff`. A citation identifies a definition or algorithm; it does not
 certify this implementation. The method pages explain numerical conventions and limitations.
@@ -27,6 +27,7 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.MVE` | [R85](#r85), [VAR09](#var09) | Random elemental ellipsoids and local refits; approximate search, not a certified global MVE; `CovMve` is diagnostic only |
 | `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw estimates also compared |
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
+| `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
 
 ## Bibliography
@@ -124,7 +125,7 @@ Computational Statistics & Data Analysis, **50**(3), 733–759.
 Rousseeuw, P. J. (1984). *Least Median of Squares Regression*.
 Journal of the American Statistical Association, **79**(388), 871–880.
 [DOI](https://doi.org/10.1080/01621459.1984.10477105).
-Cited for the MCD origin; this package does not implement LMS regression.
+Introduces LTS regression and the MCD; this package does not implement LMS regression.
 
 (r85)=
 ### R85
@@ -137,6 +138,12 @@ See the detailed treatment and bibliography in [VAR09](#var09).
 Rousseeuw, P. J. and Van Driessen, K. (1999). *A Fast Algorithm for the
 Minimum Covariance Determinant Estimator*. Technometrics, **41**(3), 212–223.
 [Author-hosted article](https://wis.kuleuven.be/stat/robust/papers/1999/rousseeuwvandriessen-fastalgorithmformcd-technomet.pdf).
+
+(rvd06)=
+### RVD06
+Rousseeuw, P. J. and Van Driessen, K. (2006). *Computing LTS Regression for
+Large Data Sets*. Data Mining and Knowledge Discovery, **12**(1), 29–45.
+[DOI](https://doi.org/10.1007/s10618-005-0024-4).
 
 (hrv12)=
 ### HRV12

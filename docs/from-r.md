@@ -51,6 +51,22 @@ attributes with a trailing underscore. For `covMcd`:
 | `best` | `raw_support_` (a boolean mask instead of indices) |
 | `mcd.wt` | `support_` |
 
+## Regression
+
+| R | robustmodels |
+| --- | --- |
+| `robustbase::ltsReg(X, y)` | `regression.LTSRegressor().fit(X, y)` |
+| `robustbase::ltsReg(X, y, intercept = FALSE)` | `regression.LTSRegressor(fit_intercept=False).fit(X, y)` |
+
+| `ltsReg` result | robustmodels attribute |
+| --- | --- |
+| `coefficients` | `intercept_`, `coef_` |
+| `raw.coefficients` | `raw_intercept_`, `raw_coef_` |
+| `scale`, `raw.scale` | `scale_`, `raw_scale_` |
+| `quan` | `h_` |
+| `best` | `raw_support_` (a boolean mask instead of indices) |
+| `raw.weights` | `support_` |
+
 ## Differences to keep in mind
 
 - **Data layout:** as in R, observations are rows and variables are columns.

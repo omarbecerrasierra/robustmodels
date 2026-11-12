@@ -1,7 +1,7 @@
 # robustmodels
 
-Robust statistics for Python: estimators of location, scale and covariance that
-stay reliable when part of the data are outliers.
+Robust statistics for Python: estimators of location, scale, covariance and
+linear regression that stay reliable when part of the data are outliers.
 
 ```bash
 pip install robustmodels
@@ -47,6 +47,7 @@ The covariance estimators are scikit-learn estimators:
 | [Scale and skewness](scale.md) | MAD, Qn, Sn, Pn, tau scale, M-scale, medcouple and tail weights |
 | [Method references](references.md) | Scientific sources, formulas and R conventions |
 | [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, S- and MM-estimators; outlier detection |
+| [Regression](regression.md) | Least trimmed squares (LTS) regression; outlier detection |
 
 Each page explains how to choose and use the estimators, then documents every
 function and class: definition, parameters, return value, references and an
@@ -70,6 +71,7 @@ example.
 location
 scale
 covariance
+regression
 from-r
 references
 roadmap

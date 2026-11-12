@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `regression.LTSRegressor`: least trimmed squares regression with FAST-LTS,
+  reweighting and small-sample corrections; it matches robustbase's `ltsReg`.
 - Add the Zenodo DOI to the README and `CITATION.cff`.
 
 ## 0.1.2 (2026-11-12)

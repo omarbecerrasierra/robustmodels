@@ -24,8 +24,10 @@ observations.
 - **Summarize a sample:** robust location, scale, skewness and tail-weight measures.
 - **Model multivariate data:** six location and covariance estimators, including
   regularized covariance for data with more variables than observations.
+- **Fit robust regressions:** least trimmed squares, resistant to vertical
+  outliers and bad leverage points.
 - **Work with familiar tools:** NumPy-compatible inputs and the scikit-learn
-  estimator interface for covariance models.
+  estimator interface for covariance and regression models.
 - **Inspect the methods:** documented formulas, scientific references, numerical
   conventions and executable examples.
 
@@ -107,6 +109,33 @@ Use `mahalanobis(new_X)` to score new observations; it returns **squared**
 distances. Covariance estimators support `get_params`, `set_params` and
 `sklearn.base.clone`.
 
+## Fit a robust regression
+
+Least trimmed squares fits the bulk of the data when some responses are wrong:
+
+```python
+import numpy as np
+from robustmodels.regression import LTSRegressor
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(100, 1))
+y = 1 + 2 * X[:, 0] + rng.normal(scale=0.5, size=100)
+y[:20] += 15  # twenty outliers
+
+lts = LTSRegressor(random_state=0).fit(X, y)
+print(f"Intercept {lts.intercept_:.2f}, slope {lts.coef_[0]:.2f}")
+print("Outliers used:", int(lts.support_[:20].sum()))
+```
+
+```text
+Intercept 0.95, slope 2.04
+Outliers used: 0
+```
+
+The true line is `1 + 2x`; least squares gives an intercept of 4.04 and a slope
+of 1.17. See the [regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
+for outlier detection and the scale estimate.
+
 ## Choose an estimator
 
 | Your task | A starting point | What to consider |
@@ -117,6 +146,7 @@ distances. Covariance estimators support `get_params`, `set_params` and
 | Estimate covariance when observations outnumber variables | `MCD` | Supports random or deterministic starts. |
 | Estimate covariance when variables outnumber observations | `MRCD` | Regularizes toward an identity target in standardized coordinates. |
 | Explore other multivariate approaches | `OGK`, `MVE`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
+| Fit a linear regression with outliers | `LTSRegressor` | Least trimmed squares, then reweighted least squares. |
 
 For example, regularized covariance can be fitted to a wide matrix:
 
@@ -143,6 +173,7 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.location` | `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean` |
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator` |
+| `robustmodels.regression` | `LTSRegressor` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,
@@ -153,8 +184,8 @@ return values, examples and references.
 - Univariate estimators take finite, one-dimensional samples. Empty samples
   return `NaN`; a single observation has zero scale. Handle missing and infinite
   values before fitting.
-- Covariance models take matrices with **observations in rows** and variables
-  in columns. Set `random_state` for methods that use random starts.
+- Covariance and regression models take matrices with **observations in rows**
+  and variables in columns. Set `random_state` for methods that use random starts.
 - Qn, Sn and Pn apply finite-sample corrections by default. Use
   `finite_correction=False` when you need the asymptotic calibration.
 - Robustness depends on the estimator, sample size, dimension and data. No method

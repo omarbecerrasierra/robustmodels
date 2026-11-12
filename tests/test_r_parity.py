@@ -4,6 +4,8 @@ Reference values: tests/data/r_reference.json; its "meta" entry records the R,
 robustbase and rrcov versions that produced them.
 Known differences: R rounds the consistency constants (e.g. 2.21914 for Qn),
 uses tolerance 1e-6 in huberM and an approximate medcouple.
+The LTS references use ltsReg with exhaustive search (nsamp = "exact"),
+except hbk (500 random starts).
 """
 
 import json
@@ -14,10 +16,13 @@ import pytest
 
 from robustmodels import location, scale
 from robustmodels.covariance import MCD, MRCD, OGK, MMEstimator, SEstimator, mcd_consistency
+from robustmodels.regression import LTSRegressor, _lts_small_sample
 
 R = json.loads((Path(__file__).parent / "data" / "r_reference.json").read_text())
 UNI = R["univariate"]
 MV = R["multivariate"]
+REG = R["regression"]
+LTS_DATA = [name for name in REG if name != "small_sample"]
 
 UNIVARIATE = [
     ("Qn", scale.qn, 1e-5),
@@ -80,3 +85,21 @@ def test_s_and_mm(name):
 def test_mrcd(name):
     r = MV[name]
     assert close(MRCD().fit(np.array(r["X"])).covariance_, r["mrcd"]["cov"], 1e-5)
+
+
+@pytest.mark.parametrize("name", LTS_DATA)
+def test_lts_regression(name):
+    r = REG[name]
+    f = LTSRegressor(random_state=0).fit(np.array(r["X"]), np.array(r["y"]))
+    np.testing.assert_array_equal(np.flatnonzero(f.raw_support_), np.sort(r["best"]))
+    assert close(np.r_[f.raw_intercept_, f.raw_coef_], r["raw_coef"], 1e-12)
+    assert f.raw_scale_ == pytest.approx(r["raw_scale"], rel=1e-12)
+    assert close(np.r_[f.intercept_, f.coef_], r["coef"], 1e-12)
+    assert f.scale_ == pytest.approx(r["scale"], rel=1e-12)
+
+
+def test_lts_small_sample_factors():
+    for row in REG["small_sample"]:
+        args = int(row["p"]), int(row["n"]), row["alpha"], row["intercept"]
+        assert _lts_small_sample(*args, False) == pytest.approx(row["raw"], rel=1e-12)
+        assert _lts_small_sample(*args, True) == pytest.approx(row["rew"], rel=1e-12)
