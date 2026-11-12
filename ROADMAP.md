@@ -18,7 +18,7 @@ Suggestions and use cases are welcome in
   and rrcov are an external reference, and differences in conventions are documented.
 - **Explicit conventions:** choices such as finite-sample corrections or the
   subset size `h` are documented and, where useful, selectable.
-- **Few dependencies:** NumPy, SciPy and scikit-learn.
+- **Few dependencies:** NumPy, SciPy, scikit-learn and Matplotlib for diagnostics.
 - **Contribute upstream:** where a correct implementation already exists in
   another project, improve that project instead of duplicating it.
 
@@ -33,9 +33,8 @@ Suggestions and use cases are welcome in
 - **Outlier detection:** Stahel-Donoho and adjusted outlyingness, with
   projection depth.
 
-## Next: regression diagnostics
-
-- Robust residuals, leverage and outlier maps.
+- **Diagnostics:** regression outlier maps, distance-distance plots, tolerance
+  ellipses, adjusted boxplots and outlyingness plots.
 
 ## Later stages
 
@@ -55,8 +54,7 @@ Suggestions and use cases are welcome in
 
 ## Across all stages
 
-- Diagnostic plots, such as the adjusted boxplot, distance–distance plot,
-  tolerance ellipses and outlier maps.
+- Extend diagnostic plots as new estimators become available.
 - Classic datasets from the robust statistics literature, such as hbk,
   stackloss, starsCYG and wood.
 - A table that maps R functions to their robustmodels equivalents, and a

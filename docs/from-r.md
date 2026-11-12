@@ -76,6 +76,21 @@ attributes with a trailing underscore. For `covMcd`:
 | `best` | `raw_support_` (a boolean mask instead of indices) |
 | `raw.weights` | `support_` |
 
+## Diagnostic plots
+
+| R | robustmodels |
+| --- | --- |
+| `plot(lmrob_fit, which = 1)` | `plots.outlier_map(model, X, y)` |
+| `covPlot(X, which = "dd", m.cov = fit)` | `plots.distance_distance(model, X)` |
+| `covPlot(X, which = "tolEllipsePlot", m.cov = fit, classic = TRUE)` | `plots.tolerance_ellipse(model, X)` |
+| `robustbase::adjbox(X)` | `plots.adjusted_boxplot(X)` |
+
+These are corresponding diagnostics, not identical rendering routines.
+Labels are zero-based in Python; see the [plot conventions](plots.md#sources-and-r-conventions)
+for chi-square degrees of freedom, covariance scaling and medcouple ties.
+`plots.outlyingness_plot(detector)` displays training scores and the fitted
+cutoff from either projection detector; pass `X=` to score new observations.
+
 ## Outlier detection
 
 | R | robustmodels |

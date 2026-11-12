@@ -25,7 +25,7 @@ from .scale import (
 
 __all__ = ["LTSRegressor", "MMRegressor", "SRegressor"]
 
-# Residuals with |r / scale| above this get weight 0 (two-sided 2.5% per tail).
+# Residuals with |r / scale| above this get weight 0 (2.5% total, 1.25% per tail).
 _CUTOFF = stats.norm.ppf(0.9875)
 
 

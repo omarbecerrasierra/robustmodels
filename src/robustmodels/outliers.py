@@ -55,7 +55,7 @@ class _ProjectionOutlyingness(OutlierMixin, BaseEstimator):
         return self._outlyingness(X @ self.directions_).max(axis=1)
 
     def score_samples(self, X):
-        """Projection depth ``1 / (1 + outlyingness)``, in (0, 1]; higher is more central."""
+        """Projection depth in [0, 1]; higher is more central, 0 for infinite outlyingness."""
         return 1 / (1 + self.outlyingness(X))
 
     def decision_function(self, X):

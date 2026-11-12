@@ -104,6 +104,10 @@ bad leverage points. An observation that is extreme in `X` but follows the line
 (a good leverage point) has a small residual; robust distances of `X`, for
 example from `robustmodels.covariance.MCD`, identify it.
 
+For a combined residual and leverage diagnostic, use
+[`plots.outlier_map`](plots.md#regression-outlier-map). It distinguishes
+vertical outliers from good and bad leverage, using a residual cutoff of 2.5.
+
 ### Reproducibility
 
 FAST-LTS and FAST-S draw random starting subsets. Pass `random_state` to get

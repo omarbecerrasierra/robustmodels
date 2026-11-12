@@ -36,7 +36,7 @@ The detectors follow scikit-learn's outlier detection API, as
 | Attribute or method | Meaning |
 | --- | --- |
 | `outlyingness(X)`, `outlyingness_` | Outlyingness of new and training observations |
-| `score_samples(X)` | Projection depth `1 / (1 + outlyingness)`, in (0, 1]; higher is more central |
+| `score_samples(X)` | Projection depth `1 / (1 + outlyingness)`, in [0, 1]; higher is more central, zero for infinite outlyingness |
 | `cutoff_`, `offset_` | Outlyingness cutoff and the depth at the cutoff |
 | `decision_function(X)` | `score_samples(X) - offset_`; negative for outliers |
 | `predict(X)`, `fit_predict(X)` | -1 for outliers, 1 for inliers |
@@ -44,6 +44,9 @@ The detectors follow scikit-learn's outlier detection API, as
 
 New observations are scored against the fitted data, which keeps the
 directions and the summaries of each projection.
+
+Use [`plots.outlyingness_plot`](plots.md#outlyingness-by-observation) to inspect
+the scores, cutoff and flagged counts, including infinite outlyingness.
 
 ### Skewed data
 

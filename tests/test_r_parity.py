@@ -23,6 +23,7 @@ import pytest
 from robustmodels import location, scale
 from robustmodels.covariance import MCD, MRCD, OGK, MMEstimator, SEstimator, mcd_consistency
 from robustmodels.outliers import AdjustedOutlyingness, StahelDonohoOutlyingness
+from robustmodels.plots import _adjusted_box_stats
 from robustmodels.regression import LTSRegressor, MMRegressor, SRegressor, _lts_small_sample
 
 R = json.loads((Path(__file__).parent / "data" / "r_reference.json").read_text())
@@ -144,3 +145,13 @@ def test_projection_outlyingness(name):
     if X.shape[1] == 1:
         assert close(ao.outlyingness_, r["ao"], 1e-12)
         assert close(ao.outlyingness_, r["ao_robustbase"], 1e-12)
+
+
+@pytest.mark.parametrize("name", R["adjbox"])
+def test_adjusted_boxplot_statistics(name):
+    r = R["adjbox"][name]
+    s = _adjusted_box_stats(np.array(r["x"]))
+    stats = [s["whislo"], s["q1"], s["med"], s["q3"], s["whishi"]]
+    assert close(stats, r["stats"], 1e-12)  # robustbase::adjboxStats
+    assert close(s["fences"], r["fence"], 1e-12)
+    np.testing.assert_array_equal(np.sort(s["fliers"]), np.array(r["out"], dtype=float))

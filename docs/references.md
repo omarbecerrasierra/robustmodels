@@ -33,8 +33,24 @@ certify this implementation. The method pages explain numerical conventions and 
 | `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
 | `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06), [CDH03](#cdh03) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); covariance as `lmrob`'s `.vcov.avar1`, with the S breakdown in the scale term (`lmrob` fixes 1/2); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
+| `plots.outlier_map` | [RVZ90](#rvz90) | Residuals divided by robust scale, cutoff 2.5; MCD predictor distances with chi-square degrees of freedom excluding the intercept |
+| `plots.distance_distance`, `plots.tolerance_ellipse` | [RVZ90](#rvz90), [RVD99](#rvd99) | Unsquared distances, classical sample covariance with divisor `n−1`; 97.5% normal-reference contours, not confidence regions for the center |
+| `plots.adjusted_boxplot` | [HV08](#hv08), [BHS04](#bhs04) | Tukey hinges and observed whisker endpoints as `adjboxStats`; the package's exact medcouple convention |
+| `plots.outlyingness_plot` | [S81](#s81), [HVdV08](#hvdv08) | The fitted detector's scores and cutoff; separate display positions for infinite scores |
+
+Diagnostic plots use the fitted estimates above; the
+[diagnostic guide](plots.md#sources-and-r-conventions) lists their differences
+from R's plotting functions, and the [validation notes](validation.md) the
+pre-release checks.
 
 ## Bibliography
+
+(rvz90)=
+### RVZ90
+Rousseeuw, P. J. and van Zomeren, B. C. (1990). *Unmasking Multivariate
+Outliers and Leverage Points*. Journal of the American Statistical
+Association, **85**(411), 633–639.
+[DOI](https://doi.org/10.1080/01621459.1990.10474920).
 
 (hl63)=
 ### HL63

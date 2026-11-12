@@ -7,7 +7,7 @@ linear regression, and outlier detectors, that stay reliable when part of the da
 pip install robustmodels
 ```
 
-Requires Python 3.10+, NumPy, SciPy and scikit-learn.
+Requires Python 3.10+, NumPy, SciPy, scikit-learn and Matplotlib.
 
 ## Quick start
 
@@ -49,6 +49,8 @@ The covariance estimators are scikit-learn estimators:
 | [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, S- and MM-estimators; outlier detection |
 | [Regression](regression.md) | MM, S and least trimmed squares (LTS) regression; outlier detection |
 | [Outlier detection](outliers.md) | Stahel-Donoho and adjusted outlyingness; projection depth; skewed data |
+| [Diagnostic plots](plots.md) | Outlier maps, distance-distance plots, tolerance ellipses, adjusted boxplots and outlyingness |
+| [Validation](validation.md) | Definitions, pre-release checks and documented differences from R |
 
 Each page explains how to choose and use the estimators, then documents every
 function and class: definition, parameters, return value, references and an
@@ -74,6 +76,8 @@ scale
 covariance
 regression
 outliers
+plots
+validation
 from-r
 references
 roadmap

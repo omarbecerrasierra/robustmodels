@@ -28,6 +28,8 @@ observations.
   projection depth, as scikit-learn outlier detectors.
 - **Fit robust regressions:** MM, S and least trimmed squares estimators,
   resistant to vertical outliers and bad leverage points.
+- **Inspect diagnostics:** outlier maps, distance-distance plots, tolerance
+  ellipses, adjusted boxplots and outlyingness plots with Matplotlib.
 - **Work with familiar tools:** NumPy-compatible inputs and the scikit-learn
   estimator interface for covariance and regression models.
 - **Inspect the methods:** documented formulas, scientific references, numerical
@@ -39,7 +41,7 @@ observations.
 python -m pip install robustmodels
 ```
 
-Requires **Python 3.10+**. NumPy, SciPy and scikit-learn are installed as dependencies.
+Requires **Python 3.10+**. NumPy, SciPy, scikit-learn and Matplotlib are installed as dependencies.
 CI tests Python 3.10–3.14 on Linux, Windows and macOS.
 
 ## Start with one sample
@@ -160,6 +162,27 @@ p-values with `summary()`. See the
 [regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
 to choose an estimator and detect outliers.
 
+## Plot the diagnostics
+
+Use a fitted estimator to inspect the observations behind its flags:
+
+```python
+import matplotlib.pyplot as plt
+from robustmodels import plots
+
+ax = plots.outlyingness_plot(ao)
+plt.show()
+```
+
+Every plotting function returns a Matplotlib `Axes` and accepts `ax=` for
+subplots. Save with `ax.figure.savefig("outlyingness.png", dpi=300)`.
+Legends omit empty classes and include observation counts; labels use
+zero-based row positions. The
+[diagnostic guide](https://omarbecerrasierra.github.io/robustmodels/plots.html)
+includes rendered examples of all five plots, formulas and interpretation.
+The [validation notes](https://omarbecerrasierra.github.io/robustmodels/validation.html)
+explain the pre-release checks and differences from R.
+
 ## Choose an estimator
 
 | Your task | A starting point | What to consider |
@@ -200,6 +223,7 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator` |
 | `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor` |
 | `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness` |
+| `robustmodels.plots` | `outlier_map`, `distance_distance`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,

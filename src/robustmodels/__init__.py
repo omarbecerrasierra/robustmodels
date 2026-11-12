@@ -2,11 +2,11 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from . import covariance, location, outliers, regression, scale
+from . import covariance, location, outliers, plots, regression, scale
 
 try:
     __version__ = version("robustmodels")
 except PackageNotFoundError:  # pragma: no cover (source tree that is not installed)
     __version__ = "unknown"
 
-__all__ = ["covariance", "location", "outliers", "regression", "scale"]
+__all__ = ["covariance", "location", "outliers", "plots", "regression", "scale"]
