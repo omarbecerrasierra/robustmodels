@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 (2026-11-12)
 
 - Add `outliers.StahelDonohoOutlyingness` and `outliers.AdjustedOutlyingness`,
   scikit-learn outlier detectors with projection depth scores; they agree with
@@ -12,6 +12,16 @@
 - `MMRegressor` reports heteroskedasticity-robust standard errors, t values and
   p-values (Croux, Dhaene & Hoorelbeke 2003) and an R-style `summary()`.
 - Add the Zenodo DOI to the README and `CITATION.cff`.
+- Add `plots`: regression outlier maps, distance-distance plots, tolerance
+  ellipses, adjusted boxplots and outlyingness plots, with Matplotlib axes
+  support, class counts, infinite-score markers and separated labels.
+- Use sample covariance (`n−1`) for classical plotting distances and ellipses.
+- Add an executable diagnostic gallery, API reference and pre-release
+  validation notes covering definitions and documented differences from R.
+- Clarify that projection depth is zero for infinite outlyingness.
+- Matplotlib is now a dependency.
+- Show total downloads in the README badge; pypistats reads 0 for the monthly
+  count during a package's first month.
 
 ## 0.1.2 (2026-11-12)
 
