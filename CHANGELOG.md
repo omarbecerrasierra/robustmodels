@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add a roadmap of planned methods.
+
 ## 0.1.1 (2026-11-11)
 
 - Stabilize univariate MCD window variances in the presence of extreme outliers.
