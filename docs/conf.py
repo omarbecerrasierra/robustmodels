@@ -14,7 +14,10 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx_sitemap",
     "sphinxext.opengraph",
+    "matplotlib.sphinxext.plot_directive",
 ]
+plot_formats = [("png", 150), "svg"]
+plot_html_show_source_link = False
 exclude_patterns = ["_build"]
 myst_heading_anchors = 3
 

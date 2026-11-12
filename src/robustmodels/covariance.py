@@ -17,7 +17,7 @@ from scipy.stats import chi2
 from sklearn.covariance import EmpiricalCovariance
 from sklearn.utils.validation import validate_data
 
-from ._validation import check_count, check_option, check_range
+from ._validation import as_generator, check_count, check_option, check_range
 from .scale import (
     _bisquare_weights,
     _mscale_bisquare,
@@ -211,7 +211,7 @@ class MCD(_RobustCovariance):
         if p == 1:
             return _univariate_mcd(standardized[:, 0], h)
         if self.algorithm == "fast":
-            rng = _as_generator(self.random_state)
+            rng = as_generator(self.random_state)
             return _fast_mcd(standardized, h, self.n_trials, rng)
         return _best_mcd(standardized, _deterministic_starts(standardized, h), h)
 
@@ -726,7 +726,7 @@ class MVE(_RobustCovariance):
         return self
 
     def _best_ellipsoid(self, X, h):
-        rng = _as_generator(self.random_state)
+        rng = as_generator(self.random_state)
         candidates = []
         for _ in range(self.n_trials):
             subset = _random_subset(X, rng)
@@ -973,7 +973,7 @@ class SEstimator(_RobustCovariance):
         if n <= p:
             raise ValueError(f"S-estimation needs n > p (got n={n}, p={p})")
         c = _tuning_for_breakdown(self.breakdown, p)
-        rng = _as_generator(self.random_state)
+        rng = as_generator(self.random_state)
         candidates = self._initial_candidates(X, c, rng)
         candidates.sort(key=lambda candidate: candidate[2])
         refined = []
@@ -1225,10 +1225,3 @@ def _gk_covariance(X, scale_fn):
             covariance = (sum_variance - difference_variance) / 4
             matrix[i, j] = matrix[j, i] = covariance
     return matrix
-
-
-def _as_generator(random_state):
-    """NumPy ``Generator`` from None, an int, a Generator or a legacy RandomState."""
-    if isinstance(random_state, np.random.RandomState):
-        random_state = random_state.randint(2**31)
-    return np.random.default_rng(random_state)

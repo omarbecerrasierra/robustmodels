@@ -1,6 +1,6 @@
 # Method references
 
-These references describe the methods implemented in the **current** three
+These references describe the methods implemented in the **current**
 modules. They are separate from citing the robustmodels software itself via
 `CITATION.cff`. A citation identifies a definition or algorithm; it does not
 certify this implementation. The method pages explain numerical conventions and limitations.
@@ -27,9 +27,30 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.MVE` | [R85](#r85), [VAR09](#var09) | Random elemental ellipsoids and local refits; approximate search, not a certified global MVE; `CovMve` is diagnostic only |
 | `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw estimates also compared |
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
+| `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
+| `outliers.StahelDonohoOutlyingness` | [S81](#s81), [D82](#d82), [Z03](#z03) | Directions normal to hyperplanes through `p` points (all when few, else random), consistent MAD, log cutoff as mrfDepth; `outlyingness`, `projdepth` |
+| `outliers.AdjustedOutlyingness` | [HVdV08](#hvdv08), [HV08](#hv08) | Adjusted boxplot whiskers with type-5 quartiles and the medcouple by definition; ties from rounding merged; log cutoff as mrfDepth; `adjOutl`, `sprojdepth` |
+| `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
+| `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06), [CDH03](#cdh03) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); covariance as `lmrob`'s `.vcov.avar1`, with the S breakdown in the scale term (`lmrob` fixes 1/2); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
+| `plots.outlier_map` | [RVZ90](#rvz90) | Residuals divided by robust scale, cutoff 2.5; MCD predictor distances with chi-square degrees of freedom excluding the intercept |
+| `plots.distance_distance`, `plots.tolerance_ellipse` | [RVZ90](#rvz90), [RVD99](#rvd99) | Unsquared distances, classical sample covariance with divisor `n−1`; 97.5% normal-reference contours, not confidence regions for the center |
+| `plots.adjusted_boxplot` | [HV08](#hv08), [BHS04](#bhs04) | Tukey hinges and observed whisker endpoints as `adjboxStats`; the package's exact medcouple convention |
+| `plots.outlyingness_plot` | [S81](#s81), [HVdV08](#hvdv08) | The fitted detector's scores and cutoff; separate display positions for infinite scores |
+
+Diagnostic plots use the fitted estimates above; the
+[diagnostic guide](plots.md#sources-and-r-conventions) lists their differences
+from R's plotting functions, and the [validation notes](validation.md) the
+pre-release checks.
 
 ## Bibliography
+
+(rvz90)=
+### RVZ90
+Rousseeuw, P. J. and van Zomeren, B. C. (1990). *Unmasking Multivariate
+Outliers and Leverage Points*. Journal of the American Statistical
+Association, **85**(411), 633–639.
+[DOI](https://doi.org/10.1080/01621459.1990.10474920).
 
 (hl63)=
 ### HL63
@@ -124,7 +145,7 @@ Computational Statistics & Data Analysis, **50**(3), 733–759.
 Rousseeuw, P. J. (1984). *Least Median of Squares Regression*.
 Journal of the American Statistical Association, **79**(388), 871–880.
 [DOI](https://doi.org/10.1080/01621459.1984.10477105).
-Cited for the MCD origin; this package does not implement LMS regression.
+Introduces LTS regression and the MCD; this package does not implement LMS regression.
 
 (r85)=
 ### R85
@@ -137,6 +158,65 @@ See the detailed treatment and bibliography in [VAR09](#var09).
 Rousseeuw, P. J. and Van Driessen, K. (1999). *A Fast Algorithm for the
 Minimum Covariance Determinant Estimator*. Technometrics, **41**(3), 212–223.
 [Author-hosted article](https://wis.kuleuven.be/stat/robust/papers/1999/rousseeuwvandriessen-fastalgorithmformcd-technomet.pdf).
+
+(s81)=
+### S81
+Stahel, W. A. (1981). *Robuste Schätzungen: infinitesimale Optimalität und
+Schätzungen von Kovarianzmatrizen*. PhD thesis, ETH Zürich.
+
+(d82)=
+### D82
+Donoho, D. L. (1982). *Breakdown Properties of Multivariate Location
+Estimators*. Qualifying paper, Department of Statistics, Harvard University.
+
+(z03)=
+### Z03
+Zuo, Y. (2003). *Projection-Based Depth Functions and Associated Medians*.
+The Annals of Statistics, **31**(5), 1460–1490.
+[DOI](https://doi.org/10.1214/aos/1065705115).
+
+(hvdv08)=
+### HVdV08
+Hubert, M. and Van der Veeken, S. (2008). *Outlier Detection for Skewed Data*.
+Journal of Chemometrics, **22**(3–4), 235–246.
+[DOI](https://doi.org/10.1002/cem.1123).
+
+(hv08)=
+### HV08
+Hubert, M. and Vandervieren, E. (2008). *An Adjusted Boxplot for Skewed
+Distributions*. Computational Statistics & Data Analysis, **52**(12),
+5186–5201. [DOI](https://doi.org/10.1016/j.csda.2007.11.008).
+
+(ry84)=
+### RY84
+Rousseeuw, P. J. and Yohai, V. J. (1984). *Robust Regression by Means of
+S-Estimators*. In Robust and Nonlinear Time Series Analysis, Lecture Notes in
+Statistics 26, 256–272. Springer.
+[DOI](https://doi.org/10.1007/978-1-4615-7821-5_15).
+
+(sby06)=
+### SBY06
+Salibian-Barrera, M. and Yohai, V. J. (2006). *A Fast Algorithm for
+S-Regression Estimates*. Journal of Computational and Graphical Statistics,
+**15**(2), 414–427. [DOI](https://doi.org/10.1198/106186006X113629).
+
+(y87)=
+### Y87
+Yohai, V. J. (1987). *High Breakdown-Point and High Efficiency Robust Estimates
+for Regression*. The Annals of Statistics, **15**(2), 642–656.
+[DOI](https://doi.org/10.1214/aos/1176350366).
+
+(cdh03)=
+### CDH03
+Croux, C., Dhaene, G. and Hoorelbeke, D. (2003). *Robust Standard Errors for
+Robust Estimators*. Discussion Paper 03.16, Center for Economic Studies,
+KU Leuven. [RePEc](https://ideas.repec.org/p/ete/ceswps/ces0316.html).
+
+(rvd06)=
+### RVD06
+Rousseeuw, P. J. and Van Driessen, K. (2006). *Computing LTS Regression for
+Large Data Sets*. Data Mining and Knowledge Discovery, **12**(1), 29–45.
+[DOI](https://doi.org/10.1007/s10618-005-0024-4).
 
 (hrv12)=
 ### HRV12
@@ -221,7 +301,8 @@ Maronna, R. A., Martin, R. D., Yohai, V. J. and Salibián-Barrera, M. (2019).
 
 Package manuals and source identify the software conventions:
 [robustbase](https://cran.r-project.org/package=robustbase),
-[rrcov](https://cran.r-project.org/package=rrcov).
+[rrcov](https://cran.r-project.org/package=rrcov),
+[mrfDepth](https://cran.r-project.org/package=mrfDepth).
 The stored regression fixtures in `tests/data/r_reference.json` record the
 versions that produced those values. Agreement with these fixtures is limited
 to their data and settings, and does not imply universal agreement with R.

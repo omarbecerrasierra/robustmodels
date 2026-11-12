@@ -18,7 +18,7 @@ Suggestions and use cases are welcome in
   and rrcov are an external reference, and differences in conventions are documented.
 - **Explicit conventions:** choices such as finite-sample corrections or the
   subset size `h` are documented and, where useful, selectable.
-- **Few dependencies:** NumPy, SciPy and scikit-learn.
+- **Few dependencies:** NumPy, SciPy, scikit-learn and Matplotlib for diagnostics.
 - **Contribute upstream:** where a correct implementation already exists in
   another project, improve that project instead of duplicating it.
 
@@ -28,11 +28,13 @@ Suggestions and use cases are welcome in
 - **Scale, skewness and tail weight:** MAD, Qn, Sn, Pn, tau scale, M-scale,
   medcouple and its left and right versions.
 - **Covariance:** MCD (FAST-MCD and DetMCD), MRCD, MVE, OGK, S and MM estimators.
+- **Regression:** least trimmed squares (FAST-LTS) with reweighting, and S and
+  MM estimators (FAST-S), with standard errors and tests for MM.
+- **Outlier detection:** Stahel-Donoho and adjusted outlyingness, with
+  projection depth.
 
-## Next: robust regression
-
-- LTS, S and MM regression.
-- Diagnostics: robust residuals, leverage and outlier maps.
+- **Diagnostics:** regression outlier maps, distance-distance plots, tolerance
+  ellipses, adjusted boxplots and outlyingness plots.
 
 ## Later stages
 
@@ -44,17 +46,15 @@ Suggestions and use cases are welcome in
    derivatives, highest density regions and two-sample tests.
 3. **Robust generalized linear models:** Mallows quasi-likelihood, Bianco–Yohai,
    weighted Bianco–Yohai and MT estimators, and robust nonlinear regression.
-4. **Depth and outlyingness:** projection depth (random directions, Peña–Prieto,
-   skewness-adjusted), regression depth, the bagplot, and adjusted and
-   directional outlyingness.
+4. **Depth and outlyingness:** halfspace depth, Peña–Prieto projection
+   directions, regression depth, the bagplot and directional outlyingness.
 5. **Rank-based methods:** rank regression and exact conditional tests with ties.
 6. **Shape-constrained estimation:** univariate log-concave density estimation
    and regression by antitonic score matching.
 
 ## Across all stages
 
-- Diagnostic plots, such as the adjusted boxplot, distance–distance plot,
-  tolerance ellipses and outlier maps.
+- Extend diagnostic plots as new estimators become available.
 - Classic datasets from the robust statistics literature, such as hbk,
   stackloss, starsCYG and wood.
 - A table that maps R functions to their robustmodels equivalents, and a

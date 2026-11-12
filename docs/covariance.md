@@ -71,6 +71,10 @@ tail. The 2.5% tail probability is a population/asymptotic reference; fitted
 in-sample distances do not provide an exact finite-sample test or an exact
 2.5% false-positive rate.
 
+Use [`plots.distance_distance`](plots.md#distance-distance-plot) to compare
+robust and classical distances, or
+[`plots.tolerance_ellipse`](plots.md#tolerance-ellipses) for two variables.
+
 ### Reproducibility
 
 `MCD` (with `algorithm="fast"`), `MVE`, `SEstimator` and `MMEstimator` draw

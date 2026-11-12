@@ -3,6 +3,9 @@
 Robust alternatives to the standard deviation, and robust measures of skewness
 and tail weight, in `robustmodels.scale`.
 
+For a visual summary that uses the medcouple to adjust for skewness, see
+[`plots.adjusted_boxplot`](plots.md#skewness-adjusted-boxplot).
+
 ## Choosing an estimator
 
 | Function | Breakdown point | Gaussian efficiency | Notes |

@@ -34,6 +34,13 @@ def check_count(name, value):
         raise ValueError(f"{name} must be a positive integer, got {value!r}")
 
 
+def as_generator(random_state):
+    """NumPy ``Generator`` from None, an int, a Generator or a legacy RandomState."""
+    if isinstance(random_state, np.random.RandomState):
+        random_state = random_state.randint(2**31)
+    return np.random.default_rng(random_state)
+
+
 def check_option(name, value, options):
     """Raise ``ValueError`` unless ``value`` is one of ``options``."""
     if value not in options:

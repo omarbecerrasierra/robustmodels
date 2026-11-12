@@ -6,7 +6,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/robustmodels)](https://pypi.org/project/robustmodels/)
 [![CI](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml/badge.svg)](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/omarbecerrasierra/robustmodels/graph/badge.svg)](https://codecov.io/gh/omarbecerrasierra/robustmodels)
-[![Downloads](https://img.shields.io/pypi/dm/robustmodels)](https://pypistats.org/packages/robustmodels)
+[![Downloads](https://static.pepy.tech/badge/robustmodels)](https://pepy.tech/projects/robustmodels)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/omarbecerrasierra/robustmodels/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24169655.svg)](https://doi.org/10.5281/zenodo.24169655)
 
@@ -24,8 +24,14 @@ observations.
 - **Summarize a sample:** robust location, scale, skewness and tail-weight measures.
 - **Model multivariate data:** six location and covariance estimators, including
   regularized covariance for data with more variables than observations.
+- **Detect outliers:** Stahel-Donoho and skewness-adjusted outlyingness with
+  projection depth, as scikit-learn outlier detectors.
+- **Fit robust regressions:** MM, S and least trimmed squares estimators,
+  resistant to vertical outliers and bad leverage points.
+- **Inspect diagnostics:** outlier maps, distance-distance plots, tolerance
+  ellipses, adjusted boxplots and outlyingness plots with Matplotlib.
 - **Work with familiar tools:** NumPy-compatible inputs and the scikit-learn
-  estimator interface for covariance models.
+  estimator interface for covariance and regression models.
 - **Inspect the methods:** documented formulas, scientific references, numerical
   conventions and executable examples.
 
@@ -35,7 +41,7 @@ observations.
 python -m pip install robustmodels
 ```
 
-Requires **Python 3.10+**. NumPy, SciPy and scikit-learn are installed as dependencies.
+Requires **Python 3.10+**. NumPy, SciPy, scikit-learn and Matplotlib are installed as dependencies.
 CI tests Python 3.10–3.14 on Linux, Windows and macOS.
 
 ## Start with one sample
@@ -107,6 +113,76 @@ Use `mahalanobis(new_X)` to score new observations; it returns **squared**
 distances. Covariance estimators support `get_params`, `set_params` and
 `sklearn.base.clone`.
 
+For skewed data, where a symmetric scale masks outliers on the short side,
+use adjusted outlyingness:
+
+```python
+from robustmodels.outliers import AdjustedOutlyingness
+
+X = np.random.default_rng(0).lognormal(size=(100, 2))
+X[:5] = [-3, -3]  # five outliers on the short side
+ao = AdjustedOutlyingness(random_state=0).fit(X)
+print("Flagged:", np.flatnonzero(ao.predict(X) == -1).tolist())
+```
+
+```text
+Flagged: [0, 1, 2, 3, 4]
+```
+
+See the [outlier detection guide](https://omarbecerrasierra.github.io/robustmodels/outliers.html).
+
+## Fit a robust regression
+
+Robust regression fits the bulk of the data when some responses are wrong.
+Least trimmed squares also tells you which observations it used:
+
+```python
+import numpy as np
+from robustmodels.regression import LTSRegressor
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(100, 1))
+y = 1 + 2 * X[:, 0] + rng.normal(scale=0.5, size=100)
+y[:20] += 15  # twenty outliers
+
+lts = LTSRegressor(random_state=0).fit(X, y)
+print(f"Intercept {lts.intercept_:.2f}, slope {lts.coef_[0]:.2f}")
+print("Outliers used:", int(lts.support_[:20].sum()))
+```
+
+```text
+Intercept 0.95, slope 2.04
+Outliers used: 0
+```
+
+The true line is `1 + 2x`; least squares gives an intercept of 4.04 and a slope
+of 1.17. `MMRegressor`, the default of R's `lmrob`, combines a 50% breakdown
+point with 95% efficiency under normal errors, and reports standard errors and
+p-values with `summary()`. See the
+[regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
+to choose an estimator and detect outliers.
+
+## Plot the diagnostics
+
+Use a fitted estimator to inspect the observations behind its flags:
+
+```python
+import matplotlib.pyplot as plt
+from robustmodels import plots
+
+ax = plots.outlyingness_plot(ao)
+plt.show()
+```
+
+Every plotting function returns a Matplotlib `Axes` and accepts `ax=` for
+subplots. Save with `ax.figure.savefig("outlyingness.png", dpi=300)`.
+Legends omit empty classes and include observation counts; labels use
+zero-based row positions. The
+[diagnostic guide](https://omarbecerrasierra.github.io/robustmodels/plots.html)
+includes rendered examples of all five plots, formulas and interpretation.
+The [validation notes](https://omarbecerrasierra.github.io/robustmodels/validation.html)
+explain the pre-release checks and differences from R.
+
 ## Choose an estimator
 
 | Your task | A starting point | What to consider |
@@ -117,6 +193,8 @@ distances. Covariance estimators support `get_params`, `set_params` and
 | Estimate covariance when observations outnumber variables | `MCD` | Supports random or deterministic starts. |
 | Estimate covariance when variables outnumber observations | `MRCD` | Regularizes toward an identity target in standardized coordinates. |
 | Explore other multivariate approaches | `OGK`, `MVE`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
+| Flag outliers in skewed multivariate data | `AdjustedOutlyingness` | Adjusted boxplot on many projections; `StahelDonohoOutlyingness` for symmetric data. |
+| Fit a linear regression with outliers | `MMRegressor` | 50% breakdown and 95% efficiency; `LTSRegressor` and `SRegressor` are alternatives. |
 
 For example, regularized covariance can be fitted to a wide matrix:
 
@@ -143,6 +221,9 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.location` | `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean` |
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator` |
+| `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor` |
+| `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness` |
+| `robustmodels.plots` | `outlier_map`, `distance_distance`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,
@@ -153,8 +234,8 @@ return values, examples and references.
 - Univariate estimators take finite, one-dimensional samples. Empty samples
   return `NaN`; a single observation has zero scale. Handle missing and infinite
   values before fitting.
-- Covariance models take matrices with **observations in rows** and variables
-  in columns. Set `random_state` for methods that use random starts.
+- Covariance and regression models take matrices with **observations in rows**
+  and variables in columns. Set `random_state` for methods that use random starts.
 - Qn, Sn and Pn apply finite-sample corrections by default. Use
   `finite_correction=False` when you need the asymptotic calibration.
 - Robustness depends on the estimator, sample size, dimension and data. No method
