@@ -6,6 +6,8 @@
   reweighting and small-sample corrections; it matches robustbase's `ltsReg`.
 - Add `regression.SRegressor` (FAST-S) and `regression.MMRegressor`, which agree
   with robustbase's `lmrob` up to its rounded tuning constants.
+- `MMRegressor` reports heteroskedasticity-robust standard errors, t values and
+  p-values (Croux, Dhaene & Hoorelbeke 2003) and an R-style `summary()`.
 - Add the Zenodo DOI to the README and `CITATION.cff`.
 
 ## 0.1.2 (2026-11-12)

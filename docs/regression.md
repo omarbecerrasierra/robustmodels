@@ -64,6 +64,29 @@ the least trimmed squares fit (`raw_coef_`, `raw_intercept_`, `raw_scale_`,
 `n_iter_`, and `MMRegressor` keeps its starting S fit in `s_coef_` and
 `s_intercept_`; its `scale_` is the S scale.
 
+### Standard errors and tests
+
+`MMRegressor` estimates the covariance matrix of its coefficients with the
+formula of Croux, Dhaene & Hoorelbeke (2003), the default of R's `lmrob`, and
+reports t statistics and two-sided p-values with `n - p` degrees of freedom.
+`summary()` prints them as `summary(lmrob)`:
+
+```pycon
+>>> print(mm.summary(["x"]))
+               Estimate  Std. Error   t value  Pr(>|t|)
+(Intercept)      0.9607     0.05451    17.626  3.77e-32
+x                 2.035     0.04985    40.826  2.51e-63
+Residual scale: 0.682
+
+```
+
+The values are also attributes: `cov_params_`, `std_errors_`, `t_values_` and
+`p_values_`, ordered as `[intercept_, *coef_]`. These standard errors remain
+valid when the error variance changes with `X` (heteroskedasticity); when it
+does not, they are somewhat less efficient than classical ones. In the tests,
+95% intervals cover the true coefficients about 94% of the time with normal
+errors and 95% with heteroskedastic errors (`n = 100`).
+
 ### Detecting outliers
 
 Divide the residuals by `scale_` and flag those above 2.24 in absolute value,
@@ -135,7 +158,8 @@ tests check both efficiencies by simulation.
 Sources: [LTS](references.md#r84), [FAST-LTS](references.md#rvd06),
 [small-sample corrections](references.md#pvaw02),
 [S-estimators](references.md#ry84), [FAST-S](references.md#sby06),
-[MM-estimators](references.md#y87) and [the `n - p` scale](references.md#mmys19).
+[MM-estimators](references.md#y87), [the `n - p` scale](references.md#mmys19) and
+[MM standard errors](references.md#cdh03).
 
 ## Reference
 

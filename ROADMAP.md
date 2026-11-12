@@ -29,12 +29,11 @@ Suggestions and use cases are welcome in
   medcouple and its left and right versions.
 - **Covariance:** MCD (FAST-MCD and DetMCD), MRCD, MVE, OGK, S and MM estimators.
 - **Regression:** least trimmed squares (FAST-LTS) with reweighting, and S and
-  MM estimators (FAST-S).
+  MM estimators (FAST-S), with standard errors and tests for MM.
 
-## Next: regression diagnostics and inference
+## Next: regression diagnostics
 
 - Robust residuals, leverage and outlier maps.
-- Standard errors and tests for the regression coefficients.
 
 ## Later stages
 

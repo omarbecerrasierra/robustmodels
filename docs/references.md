@@ -29,7 +29,7 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
 | `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
 | `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
-| `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); `lmrob` default |
+| `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06), [CDH03](#cdh03) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); covariance as `lmrob`'s `.vcov.avar1`, with the S breakdown in the scale term (`lmrob` fixes 1/2); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
 
 ## Bibliography
@@ -159,6 +159,12 @@ S-Regression Estimates*. Journal of Computational and Graphical Statistics,
 Yohai, V. J. (1987). *High Breakdown-Point and High Efficiency Robust Estimates
 for Regression*. The Annals of Statistics, **15**(2), 642–656.
 [DOI](https://doi.org/10.1214/aos/1176350366).
+
+(cdh03)=
+### CDH03
+Croux, C., Dhaene, G. and Hoorelbeke, D. (2003). *Robust Standard Errors for
+Robust Estimators*. Discussion Paper 03.16, Center for Economic Studies,
+KU Leuven. [RePEc](https://ideas.repec.org/p/ete/ceswps/ces0316.html).
 
 (rvd06)=
 ### RVD06

@@ -116,3 +116,6 @@ def test_s_and_mm_regression(name):
         assert close(np.r_[s.intercept_, s.coef_], r["s_coef"], 1e-5)
         mm = MMRegressor(random_state=0).fit(X, y)
         assert close(np.r_[mm.intercept_, mm.coef_], r["mm_coef"], 1e-5)
+        assert close(mm.cov_params_, r["cov"], 1e-4)  # .vcov.avar1, summary(lmrob)
+        assert close(mm.std_errors_, r["std_errors"], 1e-4)
+        assert close(mm.p_values_, r["p_values"], 1e-4)

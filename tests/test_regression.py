@@ -2,6 +2,7 @@ import itertools
 
 import numpy as np
 import pytest
+from scipy import stats
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 from robustmodels.regression import (
@@ -9,6 +10,7 @@ from robustmodels.regression import (
     MMRegressor,
     SRegressor,
     _lts_small_sample,
+    _positive_semidefinite,
     _s_scale,
 )
 from robustmodels.scale import _rho, _tuning_for_breakdown, _tuning_for_efficiency
@@ -222,7 +224,7 @@ def test_s_and_mm_equivariance(estimator):
 def test_gaussian_efficiency_and_scale_consistency():
     rng = np.random.default_rng(7)
     slopes = {"ols": [], "s": [], "mm": []}
-    scales = []
+    scales, errors = [], []
     for _ in range(200):
         X = rng.normal(size=(100, 2))
         y = X @ [1.0, 1.0] + rng.normal(size=100)
@@ -231,10 +233,51 @@ def test_gaussian_efficiency_and_scale_consistency():
         slopes["s"].append(mm.s_coef_)
         slopes["mm"].append(mm.coef_)
         scales.append(mm.scale_)
+        errors.append(mm.std_errors_[1:])
     variance = {k: np.var(v, axis=0).mean() for k, v in slopes.items()}
     assert variance["ols"] / variance["mm"] == pytest.approx(0.95, abs=0.05)
     assert variance["ols"] / variance["s"] == pytest.approx(0.287, abs=0.08)
     assert np.mean(scales) == pytest.approx(1, abs=0.04)
+    # standard errors match the spread of the estimates (sandwich: slightly low)
+    ratio = np.mean(errors, axis=0) / np.std(slopes["mm"], axis=0)
+    assert np.all((0.8 < ratio) & (ratio < 1.2))
+
+
+def test_mm_confidence_intervals_hold_under_heteroskedasticity():
+    rng = np.random.default_rng(11)
+    q = stats.t.ppf(0.975, 100 - 3)
+    covered = []
+    for _ in range(100):
+        X = rng.normal(size=(100, 2))
+        y = X @ [1.0, 1.0] + rng.normal(size=100) * np.exp(X[:, 0]) / 1.6
+        mm = MMRegressor(n_trials=10, random_state=0).fit(X, y)
+        covered.append(np.abs(mm.coef_ - 1) <= q * mm.std_errors_[1:])
+    assert np.mean(covered) > 0.9
+
+
+def test_mm_inference_attributes_and_summary():
+    X, y = contaminated()
+    mm = MMRegressor(random_state=0).fit(X, y)
+    estimates = np.r_[mm.intercept_, mm.coef_]
+    np.testing.assert_allclose(mm.std_errors_, np.sqrt(np.diag(mm.cov_params_)))
+    np.testing.assert_allclose(mm.t_values_, estimates / mm.std_errors_)
+    np.testing.assert_allclose(mm.p_values_, 2 * stats.t.sf(np.abs(mm.t_values_), len(y) - 3))
+    lines = mm.summary(["height", "weight"]).splitlines()
+    assert lines[0].split() == ["Estimate", "Std.", "Error", "t", "value", "Pr(>|t|)"]
+    assert [line.split()[0] for line in lines[1:4]] == ["(Intercept)", "height", "weight"]
+    assert lines[-1].startswith("Residual scale:")
+    assert "x1" in MMRegressor(fit_intercept=False, random_state=0).fit(X, y).summary()
+    with pytest.raises(ValueError, match="feature names"):
+        mm.summary(["only one"])
+
+
+def test_covariance_fix_keeps_the_variances():
+    indefinite = np.array([[1.0, 2.0], [2.0, 1.0]])
+    fixed = _positive_semidefinite(indefinite)
+    assert np.linalg.eigvalsh(fixed).min() > -1e-12
+    np.testing.assert_allclose(np.diag(fixed), [1, 1])
+    identity = np.eye(2)
+    assert _positive_semidefinite(identity) is identity
 
 
 @pytest.mark.parametrize("estimator", [SRegressor, MMRegressor])
@@ -246,6 +289,8 @@ def test_s_and_mm_exact_fit_warns(estimator):
         fit = estimator(random_state=0).fit(X, y)
     assert fit.scale_ == 0
     assert (fit.intercept_, fit.coef_[0]) == pytest.approx((1, 3))
+    if estimator is MMRegressor:
+        assert np.isnan(fit.std_errors_).all()
 
 
 def test_iteration_limits_name_the_stage():

@@ -17,6 +17,7 @@ from .covariance import h_alpha_n, mcd_consistency
 from .scale import (
     _bisquare_weights,
     _mscale_bisquare,
+    _rho,
     _tuning_for_breakdown,
     _tuning_for_efficiency,
     mad,
@@ -342,11 +343,23 @@ class MMRegressor(_RobustRegressor):
         Coefficients of the initial S-estimator.
     n_iter_ : int
         Iterations of the MM stage; 0 for an exact fit.
+    cov_params_ : ndarray of shape (p, p)
+        Asymptotic covariance matrix of the coefficients, ordered as
+        ``[intercept_, *coef_]`` with ``fit_intercept`` (Croux, Dhaene &
+        Hoorelbeke 2003, as ``lmrob``'s default). It is robust to
+        heteroskedasticity; NaN for an exact fit.
+    std_errors_, t_values_, p_values_ : ndarray of shape (p,)
+        Standard errors, t statistics and two-sided p-values from a t
+        distribution with ``n - p`` degrees of freedom, in the same order.
 
     References
     ----------
     Yohai, V. J. (1987). High breakdown-point and high efficiency robust
     estimates for regression. *The Annals of Statistics*, 15(2), 642-656.
+
+    Croux, C., Dhaene, G. and Hoorelbeke, D. (2003). Robust standard errors for
+    robust estimators. Discussion Paper 03.16, Center for Economic Studies,
+    KU Leuven.
 
     Examples
     --------
@@ -395,13 +408,53 @@ class MMRegressor(_RobustRegressor):
         self.s_intercept_, self.s_coef_ = _split(coef, self.fit_intercept)
         _warn(scale, converged)
         self.n_iter_ = 0
+        n, p = design.shape
+        cov = np.full((p, p), np.nan)  # not estimable for an exact fit
         if scale > 0:
+            s_residuals = y - design @ coef
             coef, self.n_iter_, converged = _mm_steps(design, y, coef, scale, c, self.max_iter)
             if not converged:
                 warnings.warn("MM did not converge within max_iter", RuntimeWarning, 2)
+            residuals = y - design @ coef
+            cov = _mm_covariance(design, residuals, s_residuals, scale, (c0, c), self.breakdown)
         self.scale_ = scale
         self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
+        self.cov_params_ = cov
+        self.std_errors_ = np.sqrt(np.diag(cov))
+        self.t_values_ = coef / self.std_errors_
+        self.p_values_ = 2 * stats.t.sf(np.abs(self.t_values_), n - p)
         return self
+
+    def summary(self, feature_names=None):
+        """Coefficient table as R's ``summary(lmrob)``.
+
+        Parameters
+        ----------
+        feature_names : sequence of str, optional
+            Names of the columns of ``X``; ``x0, x1, ...`` by default.
+
+        Returns
+        -------
+        str
+            Estimates, standard errors, t values and two-sided p-values, then
+            the residual scale.
+        """
+        check_is_fitted(self)
+        names = [f"x{j}" for j in range(self.n_features_in_)]
+        if feature_names is not None:
+            names = [str(name) for name in feature_names]
+            if len(names) != self.n_features_in_:
+                raise ValueError(f"expected {self.n_features_in_} feature names, got {len(names)}")
+        estimates = self.coef_
+        if self.fit_intercept:
+            names, estimates = ["(Intercept)", *names], np.r_[self.intercept_, self.coef_]
+        width = max(len(name) for name in names)
+        lines = [f"{'':{width}}  {'Estimate':>10}  {'Std. Error':>10}  {'t value':>8}  Pr(>|t|)"]
+        rows = zip(names, estimates, self.std_errors_, self.t_values_, self.p_values_, strict=True)
+        for name, estimate, error, t, pvalue in rows:
+            lines.append(f"{name:{width}}  {estimate:10.4g}  {error:10.4g}  {t:8.3f}  {pvalue:.3g}")
+        lines.append(f"Residual scale: {self.scale_:.4g}")
+        return "\n".join(lines)
 
 
 def _design(X, fit_intercept):
@@ -515,6 +568,44 @@ def _s_steps(design, y, coef, c, breakdown, zero, max_steps, tol=1e-7):
             return scale, new_coef, step, True
         coef = new_coef
     return scale, coef, max_steps, False
+
+
+def _bisquare(t, c):
+    """``psi(t) = t (1 - (t/c)^2)^2``, ``psi'(t)`` and the derivative of ``_rho``."""
+    u = (t / c) ** 2
+    inside = u <= 1
+    psi = np.where(inside, t * (1 - u) ** 2, 0.0)
+    dpsi = np.where(inside, (1 - u) * (1 - 5 * u), 0.0)
+    return psi, dpsi, 6 * psi / c**2
+
+
+def _mm_covariance(design, residuals, s_residuals, scale, tuning, breakdown):
+    """Covariance of the MM coefficients (Croux, Dhaene & Hoorelbeke 2003).
+
+    The sandwich formula of ``lmrob``'s ``.vcov.avar1``, including the
+    variability of the S scale; ``tuning`` is (initial, final) bisquare constant.
+    """
+    c0, c = tuning
+    n = len(residuals)
+    t, t0 = residuals / scale, s_residuals / scale
+    psi, dpsi, _ = _bisquare(t, c)
+    chi, dchi = _rho(t0, c0), _bisquare(t0, c0)[2]
+    inverse = scale * np.linalg.inv(design.T @ (design * dpsi[:, None]))
+    a = inverse @ (design.T @ (dpsi * t)) / np.mean(dchi * t0)
+    b = inverse @ (design.T @ (psi * chi))
+    sandwich = inverse @ (design.T @ (design * psi[:, None] ** 2)) @ inverse
+    correction = np.outer(a, b) + np.outer(b, a) - np.mean(chi**2 - breakdown**2) * np.outer(a, a)
+    return _positive_semidefinite(sandwich - correction / n)
+
+
+def _positive_semidefinite(cov):
+    """Set negative eigenvalues to 0 and keep the variances, as ``lmrob`` ("posdefify")."""
+    values, vectors = np.linalg.eigh(cov)
+    if values.min() >= 0:
+        return cov
+    fixed = (vectors * np.maximum(values, 0)) @ vectors.T
+    factor = np.sqrt(np.maximum(np.diag(cov), 0) / np.diag(fixed))
+    return factor[:, None] * fixed * factor
 
 
 def _mm_steps(design, y, coef, scale, c, max_steps, tol=1e-7):

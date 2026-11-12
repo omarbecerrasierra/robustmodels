@@ -135,7 +135,8 @@ Outliers used: 0
 
 The true line is `1 + 2x`; least squares gives an intercept of 4.04 and a slope
 of 1.17. `MMRegressor`, the default of R's `lmrob`, combines a 50% breakdown
-point with 95% efficiency under normal errors. See the
+point with 95% efficiency under normal errors, and reports standard errors and
+p-values with `summary()`. See the
 [regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
 to choose an estimator and detect outliers.
 
