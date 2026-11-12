@@ -6,7 +6,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/robustmodels)](https://pypi.org/project/robustmodels/)
 [![CI](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml/badge.svg)](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/omarbecerrasierra/robustmodels/graph/badge.svg)](https://codecov.io/gh/omarbecerrasierra/robustmodels)
-[![Downloads](https://img.shields.io/pypi/dm/robustmodels)](https://pypistats.org/packages/robustmodels)
+[![Downloads](https://static.pepy.tech/badge/robustmodels)](https://pepy.tech/projects/robustmodels)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/omarbecerrasierra/robustmodels/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24169655.svg)](https://doi.org/10.5281/zenodo.24169655)
 
