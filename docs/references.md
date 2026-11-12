@@ -28,6 +28,8 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw estimates also compared |
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
 | `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
+| `outliers.StahelDonohoOutlyingness` | [S81](#s81), [D82](#d82), [Z03](#z03) | Directions normal to hyperplanes through `p` points (all when few, else random), consistent MAD, log cutoff as mrfDepth; `outlyingness`, `projdepth` |
+| `outliers.AdjustedOutlyingness` | [HVdV08](#hvdv08), [HV08](#hv08) | Adjusted boxplot whiskers with type-5 quartiles and the medcouple by definition; ties from rounding merged; log cutoff as mrfDepth; `adjOutl`, `sprojdepth` |
 | `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
 | `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06), [CDH03](#cdh03) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); covariance as `lmrob`'s `.vcov.avar1`, with the S breakdown in the scale term (`lmrob` fixes 1/2); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
@@ -140,6 +142,34 @@ See the detailed treatment and bibliography in [VAR09](#var09).
 Rousseeuw, P. J. and Van Driessen, K. (1999). *A Fast Algorithm for the
 Minimum Covariance Determinant Estimator*. Technometrics, **41**(3), 212–223.
 [Author-hosted article](https://wis.kuleuven.be/stat/robust/papers/1999/rousseeuwvandriessen-fastalgorithmformcd-technomet.pdf).
+
+(s81)=
+### S81
+Stahel, W. A. (1981). *Robuste Schätzungen: infinitesimale Optimalität und
+Schätzungen von Kovarianzmatrizen*. PhD thesis, ETH Zürich.
+
+(d82)=
+### D82
+Donoho, D. L. (1982). *Breakdown Properties of Multivariate Location
+Estimators*. Qualifying paper, Department of Statistics, Harvard University.
+
+(z03)=
+### Z03
+Zuo, Y. (2003). *Projection-Based Depth Functions and Associated Medians*.
+The Annals of Statistics, **31**(5), 1460–1490.
+[DOI](https://doi.org/10.1214/aos/1065705115).
+
+(hvdv08)=
+### HVdV08
+Hubert, M. and Van der Veeken, S. (2008). *Outlier Detection for Skewed Data*.
+Journal of Chemometrics, **22**(3–4), 235–246.
+[DOI](https://doi.org/10.1002/cem.1123).
+
+(hv08)=
+### HV08
+Hubert, M. and Vandervieren, E. (2008). *An Adjusted Boxplot for Skewed
+Distributions*. Computational Statistics & Data Analysis, **52**(12),
+5186–5201. [DOI](https://doi.org/10.1016/j.csda.2007.11.008).
 
 (ry84)=
 ### RY84
@@ -255,7 +285,8 @@ Maronna, R. A., Martin, R. D., Yohai, V. J. and Salibián-Barrera, M. (2019).
 
 Package manuals and source identify the software conventions:
 [robustbase](https://cran.r-project.org/package=robustbase),
-[rrcov](https://cran.r-project.org/package=rrcov).
+[rrcov](https://cran.r-project.org/package=rrcov),
+[mrfDepth](https://cran.r-project.org/package=mrfDepth).
 The stored regression fixtures in `tests/data/r_reference.json` record the
 versions that produced those values. Agreement with these fixtures is limited
 to their data and settings, and does not imply universal agreement with R.

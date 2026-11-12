@@ -76,6 +76,27 @@ attributes with a trailing underscore. For `covMcd`:
 | `best` | `raw_support_` (a boolean mask instead of indices) |
 | `raw.weights` | `support_` |
 
+## Outlier detection
+
+| R | robustmodels |
+| --- | --- |
+| `mrfDepth::outlyingness(X)` | `outliers.StahelDonohoOutlyingness().fit(X)` |
+| `mrfDepth::adjOutl(X)` | `outliers.AdjustedOutlyingness().fit(X)` |
+| `mrfDepth::projdepth(X)`, `mrfDepth::sprojdepth(X)` | `score_samples(X)` of the detectors above |
+
+| mrfDepth result | robustmodels attribute or method |
+| --- | --- |
+| `outlyingnessX` | `outlyingness_` |
+| `outlyingnessZ` (new points `z`) | `outlyingness(Z)` |
+| `cutoff` | `cutoff_` |
+| `flagX` (TRUE for inliers) | `predict(X) == 1` |
+
+`robustbase::adjOutlyingness` computes the same adjusted outlyingness with
+type-7 quartiles (pass `IQRtype = 5` to match) and flags observations above the
+adjusted boxplot fence of the outlyingness values instead of mrfDepth's cutoff.
+mrfDepth's adjusted outlyingness can differ on data with tied projections; see
+the [outlier detection guide](outliers.md).
+
 ## Differences to keep in mind
 
 - **Data layout:** as in R, observations are rows and variables are columns.

@@ -4,6 +4,11 @@ Reference values: tests/data/r_reference.json; its "meta" entry records the R,
 robustbase and rrcov versions that produced them.
 Known differences: R rounds the consistency constants (e.g. 2.21914 for Qn),
 uses tolerance 1e-6 in huberM and an approximate medcouple.
+The outlyingness references use mrfDepth with all directions (ndir = "all"),
+and robustbase's adjOutlyingness with type-5 quartiles. mrfDepth's adjusted
+outlyingness differs from the exact value when rounding breaks ties among
+projections (see test_outliers.py), so only its univariate values and its
+flags are compared.
 The LTS references use ltsReg with exhaustive search (nsamp = "exact"),
 except hbk (500 random starts). S and MM references come from lmrob, which
 rounds its bisquare constants (1.54764, 4.685061): scales differ by about 3e-6.
@@ -17,6 +22,7 @@ import pytest
 
 from robustmodels import location, scale
 from robustmodels.covariance import MCD, MRCD, OGK, MMEstimator, SEstimator, mcd_consistency
+from robustmodels.outliers import AdjustedOutlyingness, StahelDonohoOutlyingness
 from robustmodels.regression import LTSRegressor, MMRegressor, SRegressor, _lts_small_sample
 
 R = json.loads((Path(__file__).parent / "data" / "r_reference.json").read_text())
@@ -119,3 +125,22 @@ def test_s_and_mm_regression(name):
         assert close(mm.cov_params_, r["cov"], 1e-4)  # .vcov.avar1, summary(lmrob)
         assert close(mm.std_errors_, r["std_errors"], 1e-4)
         assert close(mm.p_values_, r["p_values"], 1e-4)
+
+
+OUTL = R["outliers"]
+
+
+@pytest.mark.parametrize("name", OUTL)
+def test_projection_outlyingness(name):
+    r = OUTL[name]
+    X = np.array(r["X"], dtype=float)
+    sdo = StahelDonohoOutlyingness(n_directions=10**6).fit(X)  # all hyperplanes, as ndir = "all"
+    # R's mad rounds the consistency constant to 1.4826
+    assert close(sdo.outlyingness_, r["sdo"], 1e-5)
+    assert sdo.cutoff_ == pytest.approx(r["sdo_cutoff"], rel=1e-5)
+    np.testing.assert_array_equal(sdo.predict(X) == 1, r["sdo_inlier"])
+    ao = AdjustedOutlyingness(n_directions=10**6).fit(X)
+    np.testing.assert_array_equal(ao.predict(X) == 1, r["ao_inlier"])
+    if X.shape[1] == 1:
+        assert close(ao.outlyingness_, r["ao"], 1e-12)
+        assert close(ao.outlyingness_, r["ao_robustbase"], 1e-12)

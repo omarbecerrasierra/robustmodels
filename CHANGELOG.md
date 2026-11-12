@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `outliers.StahelDonohoOutlyingness` and `outliers.AdjustedOutlyingness`,
+  scikit-learn outlier detectors with projection depth scores; they agree with
+  mrfDepth and are exact on integer data where rounding misleads it.
 - Add `regression.LTSRegressor`: least trimmed squares regression with FAST-LTS,
   reweighting and small-sample corrections; it matches robustbase's `ltsReg`.
 - Add `regression.SRegressor` (FAST-S) and `regression.MMRegressor`, which agree

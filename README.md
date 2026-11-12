@@ -24,6 +24,8 @@ observations.
 - **Summarize a sample:** robust location, scale, skewness and tail-weight measures.
 - **Model multivariate data:** six location and covariance estimators, including
   regularized covariance for data with more variables than observations.
+- **Detect outliers:** Stahel-Donoho and skewness-adjusted outlyingness with
+  projection depth, as scikit-learn outlier detectors.
 - **Fit robust regressions:** MM, S and least trimmed squares estimators,
   resistant to vertical outliers and bad leverage points.
 - **Work with familiar tools:** NumPy-compatible inputs and the scikit-learn
@@ -109,6 +111,24 @@ Use `mahalanobis(new_X)` to score new observations; it returns **squared**
 distances. Covariance estimators support `get_params`, `set_params` and
 `sklearn.base.clone`.
 
+For skewed data, where a symmetric scale masks outliers on the short side,
+use adjusted outlyingness:
+
+```python
+from robustmodels.outliers import AdjustedOutlyingness
+
+X = np.random.default_rng(0).lognormal(size=(100, 2))
+X[:5] = [-3, -3]  # five outliers on the short side
+ao = AdjustedOutlyingness(random_state=0).fit(X)
+print("Flagged:", np.flatnonzero(ao.predict(X) == -1).tolist())
+```
+
+```text
+Flagged: [0, 1, 2, 3, 4]
+```
+
+See the [outlier detection guide](https://omarbecerrasierra.github.io/robustmodels/outliers.html).
+
 ## Fit a robust regression
 
 Robust regression fits the bulk of the data when some responses are wrong.
@@ -150,6 +170,7 @@ to choose an estimator and detect outliers.
 | Estimate covariance when observations outnumber variables | `MCD` | Supports random or deterministic starts. |
 | Estimate covariance when variables outnumber observations | `MRCD` | Regularizes toward an identity target in standardized coordinates. |
 | Explore other multivariate approaches | `OGK`, `MVE`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
+| Flag outliers in skewed multivariate data | `AdjustedOutlyingness` | Adjusted boxplot on many projections; `StahelDonohoOutlyingness` for symmetric data. |
 | Fit a linear regression with outliers | `MMRegressor` | 50% breakdown and 95% efficiency; `LTSRegressor` and `SRegressor` are alternatives. |
 
 For example, regularized covariance can be fitted to a wide matrix:
@@ -178,6 +199,7 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator` |
 | `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor` |
+| `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,

@@ -30,6 +30,8 @@ Suggestions and use cases are welcome in
 - **Covariance:** MCD (FAST-MCD and DetMCD), MRCD, MVE, OGK, S and MM estimators.
 - **Regression:** least trimmed squares (FAST-LTS) with reweighting, and S and
   MM estimators (FAST-S), with standard errors and tests for MM.
+- **Outlier detection:** Stahel-Donoho and adjusted outlyingness, with
+  projection depth.
 
 ## Next: regression diagnostics
 
@@ -45,9 +47,8 @@ Suggestions and use cases are welcome in
    derivatives, highest density regions and two-sample tests.
 3. **Robust generalized linear models:** Mallows quasi-likelihood, Bianco–Yohai,
    weighted Bianco–Yohai and MT estimators, and robust nonlinear regression.
-4. **Depth and outlyingness:** projection depth (random directions, Peña–Prieto,
-   skewness-adjusted), regression depth, the bagplot, and adjusted and
-   directional outlyingness.
+4. **Depth and outlyingness:** halfspace depth, Peña–Prieto projection
+   directions, regression depth, the bagplot and directional outlyingness.
 5. **Rank-based methods:** rank regression and exact conditional tests with ties.
 6. **Shape-constrained estimation:** univariate log-concave density estimation
    and regression by antitonic score matching.
