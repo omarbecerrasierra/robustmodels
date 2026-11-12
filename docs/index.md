@@ -70,6 +70,8 @@ example.
 location
 scale
 covariance
+from-r
 references
+roadmap
 changelog
 ```

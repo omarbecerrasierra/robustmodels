@@ -161,7 +161,9 @@ return values, examples and references.
   searches are approximations and do not certify global optima.
 - The package is in **early development**. Its API may change before version 1.0.
 
-The [method references](https://omarbecerrasierra.github.io/robustmodels/references.html)
+Coming from R? The [R equivalents](https://omarbecerrasierra.github.io/robustmodels/from-r.html)
+page maps robustbase, rrcov and base R functions to robustmodels. The
+[method references](https://omarbecerrasierra.github.io/robustmodels/references.html)
 connect the implementations to their scientific sources and explain differences
 from R conventions. Tests cover statistical properties, edge cases, reference
 comparisons with R's robustbase and rrcov, and scikit-learn compatibility.
@@ -173,7 +175,9 @@ comparisons with R's robustbase and rrcov, and scikit-learn compatibility.
 - **Contribute:** see the [development guide](https://github.com/omarbecerrasierra/robustmodels/blob/main/CONTRIBUTING.md)
   for setup, checks and release instructions. Bug reports and reproducible
   examples are welcome in [Issues](https://github.com/omarbecerrasierra/robustmodels/issues).
-- **Follow changes:** read the [changelog](https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md).
+- **Follow changes:** read the [changelog](https://github.com/omarbecerrasierra/robustmodels/blob/main/CHANGELOG.md)
+  and the [roadmap](https://github.com/omarbecerrasierra/robustmodels/blob/main/ROADMAP.md)
+  of planned methods.
 - **Cite:** use the metadata in [CITATION.cff](https://github.com/omarbecerrasierra/robustmodels/blob/main/CITATION.cff)
   or GitHub's “Cite this repository” option.
 

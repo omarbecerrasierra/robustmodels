@@ -1,4 +1,4 @@
-# Scale and skewness
+# Robust scale, skewness and tail weight
 
 Robust alternatives to the standard deviation, and robust measures of skewness
 and tail weight, in `robustmodels.scale`.
