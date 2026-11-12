@@ -1,4 +1,4 @@
-# Covariance
+# Robust covariance and multivariate outliers
 
 Robust estimators of multivariate location and scatter, in
 `robustmodels.covariance`.

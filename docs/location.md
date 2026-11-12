@@ -1,4 +1,4 @@
-# Location
+# Robust location estimators
 
 Robust alternatives to the sample mean, in `robustmodels.location`.
 

@@ -3,9 +3,11 @@ message: "If you use this software, please cite it using these metadata."
 title: "robustmodels: robust statistics for Python"
 type: software
 authors:
-  - name: omarbecerrasierra
-version: 0.1.1
-date-released: "2026-11-11"
+  - given-names: Omar
+    family-names: Becerra Sierra
+    orcid: "https://orcid.org/0009-0004-6376-5649"
+version: 0.1.2
+date-released: "2026-11-12"
 license: BSD-3-Clause
 repository-code: "https://github.com/omarbecerrasierra/robustmodels"
 url: "https://omarbecerrasierra.github.io/robustmodels/"

@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 (2026-11-12)
 
 - Add a roadmap of planned methods.
+- Add a page that maps robustbase, rrcov and base R functions to robustmodels.
+- Give documentation pages descriptive titles, a sitemap and search descriptions.
+- Credit the author by full name and ORCID, and expand the PyPI keywords.
 
 ## 0.1.1 (2026-11-11)
 

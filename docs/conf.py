@@ -3,8 +3,8 @@
 from importlib.metadata import version as package_version
 
 project = "robustmodels"
-author = "omarbecerrasierra"
-copyright = "2026, omarbecerrasierra"
+author = "Omar Becerra Sierra"
+copyright = "2026, Omar Becerra Sierra"
 release = package_version("robustmodels")
 
 extensions = [
@@ -12,6 +12,8 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "sphinx_sitemap",
+    "sphinxext.opengraph",
 ]
 exclude_patterns = ["_build"]
 myst_heading_anchors = 3
@@ -21,4 +23,11 @@ add_module_names = False
 napoleon_google_docstring = False
 
 html_theme = "furo"
-html_title = f"robustmodels {release}"
+html_title = "robustmodels: robust statistics for Python"
+
+# Search engines: canonical URLs, a sitemap and page descriptions.
+html_baseurl = "https://omarbecerrasierra.github.io/robustmodels/"
+sitemap_url_scheme = "{link}"
+sitemap_excludes = ["search.html", "genindex.html", "_modules/*"]
+ogp_site_url = html_baseurl
+ogp_social_cards = {"enable": False}

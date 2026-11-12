@@ -161,7 +161,9 @@ return values, examples and references.
   searches are approximations and do not certify global optima.
 - The package is in **early development**. Its API may change before version 1.0.
 
-The [method references](https://omarbecerrasierra.github.io/robustmodels/references.html)
+Coming from R? The [R equivalents](https://omarbecerrasierra.github.io/robustmodels/from-r.html)
+page maps robustbase, rrcov and base R functions to robustmodels. The
+[method references](https://omarbecerrasierra.github.io/robustmodels/references.html)
 connect the implementations to their scientific sources and explain differences
 from R conventions. Tests cover statistical properties, edge cases, reference
 comparisons with R's robustbase and rrcov, and scikit-learn compatibility.
