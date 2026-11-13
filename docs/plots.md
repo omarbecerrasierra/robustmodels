@@ -1,6 +1,6 @@
 # Diagnostic plots for robust models
 
-The five functions in `robustmodels.plots` turn fitted estimates into
+The functions in `robustmodels.plots` turn fitted estimates into
 Matplotlib diagnostics. Each returns an `Axes`, accepts an existing `ax`,
 and styles that axes without changing global `rcParams`.
 
@@ -12,7 +12,15 @@ and styles that axes without changing global `rcParams`.
 | `distance_distance(model, X)` | A fitted covariance estimator | Observations masked by the classical covariance |
 | `tolerance_ellipse(model, X)` | A fitted covariance estimator for exactly two variables | Robust and classical centers, spread and flagged rows |
 | `adjusted_boxplot(x)` | A finite, nonempty vector or matrix | Marginal outliers after allowing for skewness |
+| `bagplot(X)` | A nonsingular two-column sample | Bivariate center, spread, skewness and outliers |
 | `outlyingness_plot(detector, X=None)` | A fitted projection detector | Scores and flags for training or new observations |
+| `residual_plot(model, X, y)` | A fitted regressor with `predict` and `scale_` | Outlying residuals, trends and changing spread along the fitted values |
+| `residual_qq(model, X, y)` | A fitted regressor with `predict` and `scale_` | Whether the regular residuals look normal, and which do not |
+| `distance_qq(model, X)` | A fitted covariance estimator | Whether the regular robust distances follow the chi-square reference |
+| `pca_outlier_map(model, X=None)` | A fitted `ROBPCA` or `ProjectionPursuitPCA` | Orthogonal outliers, good and bad leverage points of a PCA |
+| `scree_plot(model)` | A fitted robust PCA | How many components carry the variance |
+| `biplot(model, X)` | A fitted robust PCA with at least two components | Scores of the observations and loadings of the variables together |
+| `discriminant_plot(model, X, y)` | A fitted `RobustLDA` or `RobustQDA` for exactly two variables | Class regions, boundaries and misclassified observations |
 
 Rows are observations and columns are variables. Fit the estimator first;
 `outlier_map` additionally fits an MCD to the supplied predictors, while the
@@ -220,6 +228,158 @@ detector's rule; it does not introduce a second outlier criterion. See
 [outlier detection](outliers.md) for the log-scale cutoff and approximation
 by a finite set of projection directions.
 
+## PCA outlier map
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: pca-outlier-map
+   :include-source: true
+   :alt: PCA outlier map with orthogonal outliers, a good leverage point and bad leverage points.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.multivariate import ROBPCA
+
+   rng = np.random.default_rng(0)
+   X = rng.normal(size=(100, 2)) @ rng.normal(size=(2, 6))
+   X += 0.3 * rng.normal(size=X.shape)
+   X[:8] += 4
+   ax = plots.pca_outlier_map(ROBPCA(2, random_state=0).fit(X))
+```
+
+The horizontal axis is the score distance, the robust distance of an
+observation's scores from the center inside the principal subspace. The
+vertical axis is the orthogonal distance from the observation to that
+subspace. The cutoffs are those of the fitted model: the square root of the
+0.975 chi-square quantile with as many degrees of freedom as components, and
+`orthogonal_cutoff_`.
+
+| Region | Class | Reading |
+| --- | --- | --- |
+| Below, left | Regular | Close to the subspace and to the center |
+| Above, left | Orthogonal outliers | Far from the subspace; their scores look ordinary |
+| Below, right | Good leverage | In the subspace but far from the center |
+| Above, right | Bad leverage | Far from the subspace and from the center |
+
+Without `X` the map shows the training data; with `X` it places new
+observations against the existing fit and cutoffs. A model that keeps as many
+components as the rank of the data has no orthogonal distances, and the
+function raises `ValueError`. See the
+[PCA guide](multivariate.md#principal-components).
+
+## Scree plot and biplot
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: scree-biplot
+   :include-source: true
+   :alt: Scree plot of five robust components beside a biplot of the first two.
+
+   import matplotlib.pyplot as plt
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.multivariate import ROBPCA
+
+   rng = np.random.default_rng(0)
+   X = rng.normal(size=(100, 2)) @ rng.normal(size=(2, 6))
+   X += 0.3 * rng.normal(size=X.shape)
+   X[:8] += 4
+   names = ["Ca", "Mg", "Na", "K", "Fe", "Zn"]
+
+   fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.8), layout="constrained")
+   plots.scree_plot(ROBPCA(5, random_state=0).fit(X), ax=axes[0])
+   plots.biplot(ROBPCA(2, random_state=0).fit(X), X, feature_names=names, ax=axes[1])
+```
+
+The scree plot shows the robust variance of each fitted component; the label
+above each point is the cumulative share of the variance of the fitted
+components, not of the total variance of the data, which a robust fit with
+fewer components than variables does not estimate. Fit as many components as
+you want to compare, then refit with the number you keep.
+
+In the biplot, points are scores on two components (`components=(0, 1)` by
+default) and arrows are the loadings of the variables on the same components.
+All arrows are multiplied by one factor, so only their directions and relative
+lengths are meaningful: variables with arrows in the same direction vary
+together in this plane. Observations beyond the score or the orthogonal cutoff
+of the model are flagged, so an orthogonal outlier can appear in the middle of
+the cloud. `n_arrows` limits the arrows to the longest ones.
+
+## Classification regions
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: discriminant
+   :include-source: true
+   :alt: Quadratic classification regions of three classes with misclassified points circled.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.multivariate import RobustQDA
+
+   rng = np.random.default_rng(0)
+   X = np.vstack([
+       rng.normal(size=(50, 2)),
+       2 * rng.normal(size=(50, 2)) + 4,
+       rng.normal(size=(50, 2)) + [5, -2],
+   ])
+   y = np.repeat(["a", "b", "c"], 50)
+   X[:5] = [9, 9]  # five outliers labeled "a"
+   ax = plots.discriminant_plot(RobustQDA(random_state=0).fit(X, y), X, y)
+```
+
+Shaded regions show the class predicted at each point of the plane and gray
+lines the boundaries. Crosses and colored ellipses are the robust center and
+97.5% tolerance ellipse of each class, the display used by
+[Hubert and Van Driessen](references.md#hvd04); `RobustLDA` draws the same
+shape for every class. Observations keep the color
+and marker of their true class; those assigned to another class are circled.
+The subtitle reports the share of plotted observations that are misclassified.
+For the training data this apparent error is optimistic: report the error on
+held-out data or by cross-validation. The function needs exactly two
+variables.
+
+## Residual and quantile plots
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: residual-quantile-plots
+   :include-source: true
+   :alt: Residuals against fitted values, their normal quantile plot and a chi-square quantile plot of robust distances.
+
+   import matplotlib.pyplot as plt
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.covariance import MCD
+   from robustmodels.regression import MMRegressor
+
+   rng = np.random.default_rng(0)
+   X = rng.normal(size=(100, 3))
+   y = 1 + X @ [2.0, -1.0, 0.5] + rng.normal(scale=0.5, size=100)
+   X[:10] += 4
+   y[10:20] += 6
+   model = MMRegressor(random_state=0).fit(X, y)
+
+   fig, axes = plt.subplots(1, 3, figsize=(15.6, 3.8), layout="constrained")
+   plots.residual_plot(model, X, y, ax=axes[0])
+   plots.residual_qq(model, X, y, ax=axes[1])
+   plots.distance_qq(MCD(random_state=0).fit(X), X, ax=axes[2])
+```
+
+`residual_plot` shows the standardized residuals against the fitted values,
+with +-2.5 as cutoffs. A trend or a funnel shape among the regular observations
+points to a missing term or to a variance that changes with the mean.
+
+`distance_qq` plots the sorted robust distances against the square roots of
+chi-square quantiles, and `residual_qq` the sorted standardized residuals
+against normal quantiles, both at probabilities `(i - 0.5) / n`. Regular
+observations from the normal model follow the diagonal. Outliers leave it at
+the ends and lie beyond the dashed cutoffs: the square root of the 0.975
+chi-square quantile, and +-2.5. A curved pattern in the regular observations
+suggests that the normal reference does not describe the bulk of the data, in
+which case the cutoffs are only rough guides. The distances and residuals come
+from the robust fit, so the outliers do not bend the reference themselves.
+
 ## Customizing and saving
 
 Use `ax=` to compose several diagnostics. Functions return the supplied axes,
@@ -263,9 +423,20 @@ figure; inspect its final size before publication.
   Hinges and whiskers follow `adjboxStats`; medcouple approximation and ties
   can produce numerical differences from R without changing the definition.
 
+- The PCA outlier map follows [Hubert, Rousseeuw and Vanden Branden](references.md#hrvb05),
+  with their univariate-MCD cutoff for the orthogonal distances;
+  `rrcov`'s `plot` method for `PcaHubert` uses a median and MAD cutoff.
+- `distance_distance`, `tolerance_ellipse` and `outlier_map` raise `ValueError`
+  when the robust covariance is singular. A pseudo-inverse gives distance
+  zero along the directions without spread, so points far away in those
+  directions would sit inside a contour labeled 97.5%.
+
 The [validation notes](validation.md) record the pre-release comparison and
 its limits. These plots are tools for investigating observations, not rules
 for automatically deleting them.
+
+The [depth guide](depth.md) includes an executable bagplot example, with the
+Tukey median, 50% bag, inflated fence and observed outliers.
 
 ## Reference
 
@@ -277,4 +448,12 @@ for automatically deleting them.
 .. autofunction:: tolerance_ellipse
 .. autofunction:: adjusted_boxplot
 .. autofunction:: outlyingness_plot
+.. autofunction:: residual_plot
+.. autofunction:: residual_qq
+.. autofunction:: distance_qq
+.. autofunction:: pca_outlier_map
+.. autofunction:: scree_plot
+.. autofunction:: bagplot
+.. autofunction:: biplot
+.. autofunction:: discriminant_plot
 ```

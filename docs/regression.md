@@ -1,6 +1,6 @@
-# Robust linear regression
+# Robust regression
 
-Robust estimators of linear regression coefficients, in
+Robust linear and nonlinear regression estimators, in
 `robustmodels.regression`.
 
 ## Choosing an estimator
@@ -165,6 +165,40 @@ Sources: [LTS](references.md#r84), [FAST-LTS](references.md#rvd06),
 [MM-estimators](references.md#y87), [the `n - p` scale](references.md#mmys19) and
 [MM standard errors](references.md#cdh03).
 
+## Nonlinear robust regression
+
+`NonlinearMRegressor(model, start)` fits `y = model(X, *params)` with Huber
+iteratively reweighted nonlinear least squares. Supply a callable that returns
+one finite value per row and a finite initial parameter vector. `params_`,
+`scale_`, `weights_`, `cov_params_` and `std_errors_` describe the final fit;
+`predict(X)` evaluates the fitted curve. `converged_` reports outer-loop
+convergence, and iteration exhaustion emits a `RuntimeWarning`.
+
+```pycon
+>>> from robustmodels.regression import NonlinearMRegressor
+>>> def decay(X, a, b):
+...     return a * np.exp(-b * X[:, 0])
+>>> rng = np.random.default_rng(0)
+>>> X = rng.uniform(0, 5, size=(80, 1))
+>>> y = decay(X, 10, 0.7) + rng.normal(scale=0.3, size=80)
+>>> y[:8] += 15
+>>> fit = NonlinearMRegressor(decay, [5, 1]).fit(X, y)
+>>> fit.params_.round(2).tolist()
+[10.29, 0.71]
+
+```
+
+The scale is the median absolute final residual divided by 0.6745, as in
+robustbase's `nlrob`. Coefficients, scale and weights are compared against
+`nlrob` on contaminated exponential decay and the DNase logistic curve.
+The covariance uses Huber's asymptotic formula with the model Jacobian;
+`nlrob`'s weighted-Jacobian convention gives different standard errors.
+The implementation is checked against an analytic exponential Jacobian.
+A zero median residual scale emits an exact-fit warning and returns zero
+covariance; standard errors in that degenerate case do not support ordinary
+inference. Robust residual weights protect against vertical outliers; leverage
+points and poor starting parameters can still dominate the fit.
+
 ## Reference
 
 ```{eval-rst}
@@ -175,5 +209,7 @@ Sources: [LTS](references.md#r84), [FAST-LTS](references.md#rvd06),
 .. autoclass:: LTSRegressor
    :members: fit, predict
 .. autoclass:: SRegressor
+   :members: fit, predict
+.. autoclass:: NonlinearMRegressor
    :members: fit, predict
 ```

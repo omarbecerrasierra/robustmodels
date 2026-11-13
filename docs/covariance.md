@@ -11,6 +11,7 @@ Robust estimators of multivariate location and scatter, in
 | `MRCD` | Any `n`, `p` | No | Regularized MCD for many variables, including `p > n` |
 | `MVE` | `n > p + 1` | Yes | Smallest covering ellipsoid; less efficient than MCD |
 | `OGK` | `n >= 2` | No | Fast for many variables; not rotation equivariant |
+| `StahelDonoho` | `n > p` | Optional | Weights from projection outlyingness; no subset search |
 | `SEstimator` | `n > p` | Yes | Smooth weights instead of a hard subset |
 | `MMEstimator` | `n > p` | Yes | S-estimator refined to 95% shape efficiency |
 
@@ -139,7 +140,15 @@ or all covariance entries. The final normalized bisquare loss must not exceed
 the initial loss pointwise (final tuning at least initial tuning). Parameter
 combinations violating this condition raise `ValueError`.
 
+The Stahel-Donoho estimator downweights observations with the Huber-type
+weights of Maronna and Yohai, so an outlier keeps a small bounded influence
+instead of being removed; with all hyperplanes through `p` observations as
+directions the result is deterministic and affine equivariant.
+`rrcov::CovSde` uses another weight function and gives different estimates on
+contaminated data.
+
 Sources: [FAST-MCD](references.md#rvd99), [DetMCD](references.md#hrv12),
+[Stahel-Donoho estimator](references.md#my95),
 [MCD corrections](references.md#pvaw02), [MRCD](references.md#brvv20),
 [MVE](references.md#var09), [OGK](references.md#mz02),
 [S-estimation](references.md#d87), and [multivariate MM](references.md#sbvaw06).
@@ -156,6 +165,8 @@ Sources: [FAST-MCD](references.md#rvd99), [DetMCD](references.md#hrv12),
 .. autoclass:: MVE
    :members: fit
 .. autoclass:: OGK
+   :members: fit
+.. autoclass:: StahelDonoho
    :members: fit
 .. autoclass:: SEstimator
    :members: fit

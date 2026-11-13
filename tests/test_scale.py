@@ -71,6 +71,13 @@ def test_equivariance():
     assert lmc(-x) == pytest.approx(rmc(x), abs=1e-15)
 
 
+@pytest.mark.parametrize("factor", [1e308, 1e-308, 2.0**900, 3.0])
+def test_medcouple_is_scale_invariant_at_the_limits_of_float64(factor):
+    x = np.array([0.1, 0.2, 0.2, 0.3, 0.4, 0.5, 0.9, 1.7])  # x * 1e308 stays finite
+    assert medcouple(x * factor) == pytest.approx(medcouple(x), abs=1e-12)
+    assert lmc(x * factor) == pytest.approx(lmc(x), abs=1e-12)
+
+
 def test_medcouple_special_cases():
     assert medcouple([2.0, 2.0, 2.0]) == 0.0
     assert medcouple(np.arange(10.0)) == 0.0

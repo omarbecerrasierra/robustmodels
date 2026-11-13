@@ -3,7 +3,7 @@
 This page records the review performed before version 0.1.3, on
 2026-11-12. It covers the mathematical definitions and numerical procedures
 in location, scale, covariance, regression, projection outlyingness and the
-five diagnostic plots. Comparisons with R complement independent checks of
+five diagnostic plots of that release. Comparisons with R complement independent checks of
 formulas and invariances; agreement with R alone is not the correctness
 criterion.
 
@@ -137,10 +137,44 @@ are bad leverage points, not merely observations with high leverage.
 The chi-square contour is a normal-model reference. It is not a confidence
 region for the center or an exact finite-sample false-positive guarantee.
 Degenerate covariance matrices invalidate the usual chi-square calibration;
-a pseudoinverse alone does not resolve that issue. Outlyingness can be
+a pseudoinverse alone does not resolve that issue, so the distance-distance
+plot, the tolerance ellipses and the regression outlier map raise `ValueError`
+when the robust covariance is singular. The regression outlier map also
+requires one response per row of `X`. Outlyingness can be
 infinite when a projection scale is zero, in which case projection depth is
 zero. The graphic distinguishes that mathematical value from its finite
 display position.
+
+## Changes after the independent review of 0.1.3
+
+An external review of 0.1.3 reproduced four defects, all corrected:
+
+- `plots.outlier_map` accepted a response of the wrong length, which NumPy
+  broadcast silently.
+- `plots.distance_distance` and `plots.tolerance_ellipse` drew 97.5% references
+  for a singular covariance.
+- `scale.medcouple` returned `NaN` for finite values near the largest float,
+  because differences overflowed; the sample is now rescaled by an exact
+  power of two, which leaves other results unchanged.
+- `covariance.h_alpha_n` returned a subset larger than the sample for `n <= p`.
+
+Conventions the review asked about and that are kept: trimmed and winsorized
+means remove `floor(n * proportion)` observations per tail, as R's `mean`, so
+small samples can be left untrimmed; outlyingness is infinite when a projection
+has zero MAD; and an exact regression fit gives zero scale and undefined
+standard errors.
+
+## Multivariate methods
+
+ROBPCA, the discriminant rules, Hotelling's test and Wilks' lambda were
+compared with rrcov 1.7-7 on the reference data in
+`tests/data/r_multivariate.json`. They agree to rounding error wherever both
+programs evaluate the same deterministic quantity; the remaining differences
+are documented choices (the orthogonal cutoff of ROBPCA, the weight function of
+the Stahel-Donoho estimator and the MCD search used by MANOVA). The level of
+the two tests was checked by simulation under the normal model: between
+3.7% and 6.7% of rejections at the 5% level in the settings tried. See the
+[multivariate guide](multivariate.md#numerical-limits-and-sources).
 
 ## Repeating the maintained checks
 
@@ -152,8 +186,24 @@ uv run ruff format --check .
 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 ```
 
-The documentation build executes the five plotting examples and renders their
+The documentation build executes the plotting examples and renders their
 figures. The maintained tests check the coordinates, mathematical invariants,
 input handling and plotting interface. Coverage measures exercised code;
 it does not replace statistical validation. The separate R comparisons above
 are a record of this review and do not add an R runtime dependency to CI.
+
+
+## Additional methods (unreleased)
+
+`tests/test_glm.py`, `tests/test_nonlinear.py` and `tests/test_depth.py`
+add frozen robustbase/mrfDepth witnesses, direct summation of Mallows moments,
+finite differences of BY and MT derivatives, an analytic nonlinear Jacobian,
+exact small halfplane enumeration, exhaustive regression separation and
+bivariate transformation checks. Directional scales are independently checked
+by Gaussian quadrature in `tests/test_outliers.py`. Plot tests compare the
+bagplot polygons and points with its underlying statistics.
+
+The frozen JSON files in `tests/data` record the R reference results and
+package versions. Running the Python tests requires no R installation. The [GLM](glm.md), [nonlinear regression](regression.md) and
+[depth](depth.md) guides describe intentional R differences and invalid
+reference values that are not used as correctness targets.

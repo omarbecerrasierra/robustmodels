@@ -18,6 +18,7 @@ from sklearn.covariance import EmpiricalCovariance
 from sklearn.utils.validation import validate_data
 
 from ._validation import as_generator, check_count, check_option, check_range
+from .outliers import StahelDonohoOutlyingness
 from .scale import (
     _bisquare_weights,
     _mscale_bisquare,
@@ -38,6 +39,7 @@ __all__ = [
     "OGK",
     "MMEstimator",
     "SEstimator",
+    "StahelDonoho",
     "h_alpha_n",
     "mcd_consistency",
     "mcd_small_sample",
@@ -168,9 +170,9 @@ class MCD(_RobustCovariance):
         n, p = X.shape
         check_option("algorithm", self.algorithm, ("fast", "deterministic"))
         check_count("n_trials", self.n_trials)
-        h = h_alpha_n(self.alpha, n, p)
         if n <= p:
             raise ValueError(f"MCD needs n > p (got n={n}, p={p}); use MRCD")
+        h = h_alpha_n(self.alpha, n, p)
         subset = self._best_subset(X, h)
         self._set_raw_estimates(X, subset, h)
         location, covariance = self._reweighted_estimates(X)
@@ -351,6 +353,11 @@ def h_alpha_n(alpha, n, p):
     -------
     int
 
+    Raises
+    ------
+    ValueError
+        If ``n <= p``: no subset of at most ``n`` observations exists.
+
     Examples
     --------
     >>> from robustmodels.covariance import h_alpha_n
@@ -360,6 +367,8 @@ def h_alpha_n(alpha, n, p):
     check_range("alpha", alpha, 0.5, 1)
     check_count("n", n)
     check_count("p", p)
+    if n <= p:
+        raise ValueError(f"h_alpha_n needs n > p (got n={n}, p={p})")
     minimum = (n + p + 1) // 2
     return int(2 * minimum - n + 2 * (n - minimum) * alpha)
 
@@ -708,9 +717,9 @@ class MVE(_RobustCovariance):
         X = self._validate(X)
         check_range("alpha", self.alpha, 0.5, 1, high_open=True)
         n, p = X.shape
-        h = h_alpha_n(self.alpha, n, p)
-        if n <= p + 1 or h > n:
+        if n <= p + 1:
             raise ValueError(f"MVE needs n > p + 1 (got n={n}, p={p})")
+        h = h_alpha_n(self.alpha, n, p)
         check_count("n_trials", self.n_trials)
         _, location, shape, distances = self._best_ellipsoid(X, h)
         radius_squared = np.partition(distances, h - 1)[h - 1]
@@ -884,6 +893,102 @@ def _scales(X, scale_fn):
     if np.any(scales <= 0):
         raise ValueError("a variable has zero robust scale (more than half of its values tied)")
     return scales
+
+
+class StahelDonoho(_RobustCovariance):
+    """Stahel-Donoho estimator of location and scatter (Stahel 1981; Donoho 1982).
+
+    Weighted mean and covariance with weights ``w(r_i)`` that decrease with the
+    Stahel-Donoho outlyingness ``r_i`` of each observation, computed by
+    :class:`~robustmodels.outliers.StahelDonohoOutlyingness`. The weights are
+    ``w(r) = min(1, (c / r)^2)`` with ``c`` the square root of a chi-square
+    quantile, as recommended by Maronna & Yohai (1995). The covariance is then
+    scaled so that the median squared distance equals the chi-square median,
+    which makes it consistent at the normal model. With all directions the
+    estimator is affine equivariant and its breakdown point approaches 50%; a
+    finite set of directions approximates it. An outlier keeps a small bounded
+    influence, since ``w(r) r^2`` equals ``c^2`` beyond ``c``. Needs ``n > p``.
+
+    Parameters
+    ----------
+    quantile : float in (0, 1), default 0.95
+        Chi-square quantile for ``c``: observations with outlyingness up to
+        ``c`` keep weight 1.
+    n_directions : int, default None
+        Number of directions; ``250 * n_features`` by default.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed for the random directions.
+
+    Attributes
+    ----------
+    location_ : ndarray of shape (n_features,)
+        Weighted mean.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Scaled weighted covariance matrix.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    outlyingness_ : ndarray of shape (n_samples,)
+        Stahel-Donoho outlyingness of the training data.
+    weights_ : ndarray of shape (n_samples,)
+        Weights in [0, 1].
+
+    Notes
+    -----
+    R's ``rrcov::CovSde`` uses a different, redescending weight function, so
+    its estimates differ on contaminated data.
+
+    References
+    ----------
+    Stahel, W. A. (1981). *Robuste Schätzungen: infinitesimale Optimalität und
+    Schätzungen von Kovarianzmatrizen*. PhD thesis, ETH Zürich.
+
+    Donoho, D. L. (1982). *Breakdown properties of multivariate location
+    estimators*. Qualifying paper, Harvard University.
+
+    Maronna, R. A. and Yohai, V. J. (1995). The behavior of the Stahel-Donoho
+    robust multivariate estimator. *Journal of the American Statistical
+    Association*, 90(429), 330-341.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import StahelDonoho
+    >>> X = np.random.default_rng(0).normal(size=(100, 2))
+    >>> X[:10] += 10
+    >>> sd = StahelDonoho(random_state=0).fit(X)
+    >>> sd.location_.round(1).tolist()
+    [0.0, 0.2]
+    >>> bool(sd.weights_[:10].max() < 0.1)  # the outliers hardly count
+    True
+    """
+
+    def __init__(self, *, quantile=0.95, n_directions=None, random_state=None):
+        self.quantile = quantile
+        self.n_directions = n_directions
+        self.random_state = random_state
+
+    def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
+        X = self._validate(X)
+        check_range("quantile", self.quantile, 0, 1, low_open=True, high_open=True)
+        detector = StahelDonohoOutlyingness(
+            n_directions=self.n_directions, random_state=self.random_state
+        ).fit(X)
+        p = X.shape[1]
+        self.outlyingness_ = detector.outlyingness_
+        with np.errstate(divide="ignore"):
+            ratio = np.sqrt(chi2.ppf(self.quantile, p)) / self.outlyingness_
+        self.weights_ = np.minimum(1, ratio**2)
+        location = self.weights_ @ X / self.weights_.sum()
+        centered = X - location
+        covariance = (self.weights_[:, None] * centered).T @ centered / self.weights_.sum()
+        if _logdet(covariance) == -np.inf:
+            raise ValueError("the weighted observations lie on a hyperplane")
+        covariance *= np.median(_mahalanobis_sq(X, location, covariance)) / chi2.ppf(0.5, p)
+        self._set_estimates(location, covariance, X)
+        return self
 
 
 class SEstimator(_RobustCovariance):

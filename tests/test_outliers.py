@@ -8,10 +8,15 @@ from scipy import stats
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 import reference as ref
-from robustmodels.outliers import AdjustedOutlyingness, StahelDonohoOutlyingness, _whiskers
+from robustmodels.outliers import (
+    AdjustedOutlyingness,
+    DirectionalOutlyingness,
+    StahelDonohoOutlyingness,
+    _whiskers,
+)
 from robustmodels.scale import mad
 
-DETECTORS = [StahelDonohoOutlyingness, AdjustedOutlyingness]
+DETECTORS = [StahelDonohoOutlyingness, AdjustedOutlyingness, DirectionalOutlyingness]
 
 
 def expected_failures(estimator):
@@ -25,6 +30,7 @@ def expected_failures(estimator):
     [
         StahelDonohoOutlyingness(random_state=0),
         AdjustedOutlyingness(n_directions=50, random_state=0),
+        DirectionalOutlyingness(n_directions=50, random_state=0),
     ],
     expected_failed_checks=expected_failures,
 )
@@ -175,3 +181,39 @@ def test_random_directions_are_reproducible():
 def test_invalid_input_raises_a_clear_error(detector, X, message):
     with pytest.raises(ValueError, match=message):
         detector.fit(X)
+
+
+def test_directional_outlyingness_by_numerical_scale_expectation():
+    from scipy.integrate import quad
+
+    c = 2.1
+    alpha = quad(lambda t: min((t / c) ** 2, 1) * stats.norm.pdf(t), 0, np.inf)[0]
+    for n in [31, 40]:
+        x = np.sort(np.random.default_rng(n).lognormal(size=n))
+        center, half = np.median(x), (n + 1) // 2
+        scales = []
+        for deviations in [center - x[:half], x[-half:] - center]:
+            initial = np.median(deviations) / stats.norm.ppf(0.75)
+            scale = initial * np.sqrt(
+                np.mean(np.minimum((deviations / initial / c) ** 2, 1)) / (2 * alpha)
+            )
+            scales.append(scale)
+        fit = DirectionalOutlyingness().fit(x[:, None])
+        np.testing.assert_allclose(fit.lower_scales_, scales[0])
+        np.testing.assert_allclose(fit.upper_scales_, scales[1])
+        np.testing.assert_allclose(
+            fit.outlyingness_, np.abs(x - center) / np.where(x > center, scales[1], scales[0])
+        )
+
+
+def test_directional_even_r_scores_after_calibration_conversion():
+    # mrfDepth rounds the normalization to 1.54. Even n shares the paper's
+    # half-sample definition, so converting that constant aligns the scores.
+    from robustmodels.outliers import _DO_ALPHA
+
+    r = json.loads((Path(__file__).parent / "data" / "r_depth.json").read_text())
+    r = r["dirOutl"]["u_even"]
+    fit = DirectionalOutlyingness().fit(r["x"])
+    expected = np.ravel(r["outlyingness"]) * 1.54 * 2 * np.sqrt(_DO_ALPHA)
+    # R also rounds its initial MAD constant to 1.4826.
+    np.testing.assert_allclose(fit.outlyingness_, expected, atol=1e-10, rtol=1e-6)

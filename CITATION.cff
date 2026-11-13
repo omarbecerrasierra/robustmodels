@@ -14,9 +14,14 @@ repository-code: "https://github.com/omarbecerrasierra/robustmodels"
 url: "https://omarbecerrasierra.github.io/robustmodels/"
 abstract: >-
   Robust estimators of univariate location and scale and of multivariate
-  location and scatter, robust regression, outlier detection and diagnostics,
+  location and scatter, robust principal components, discriminant analysis,
+  linear and nonlinear regression, robust generalized linear models,
+  depth, outlier detection and diagnostics,
   with the scikit-learn estimator interface.
 keywords:
   - robust statistics
   - outliers
   - covariance
+  - robust regression
+  - generalized linear models
+  - statistical depth

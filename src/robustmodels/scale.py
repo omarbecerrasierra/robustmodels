@@ -629,6 +629,9 @@ def medcouple(x):
     x = np.sort(as_1d(x))
     if x.size == 0:
         return np.nan
+    # The medcouple is scale invariant: an exact power-of-two rescaling keeps
+    # the differences below from overflowing for huge finite values.
+    x = np.ldexp(x, -int(np.frexp(np.abs(x).max())[1]))
     center = np.median(x)
     upper = x[x >= center] - center
     lower = x[x <= center] - center

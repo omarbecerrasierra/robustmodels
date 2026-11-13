@@ -22,14 +22,19 @@ compare summaries, estimate multivariate structure, and investigate unusual
 observations.
 
 - **Summarize a sample:** robust location, scale, skewness and tail-weight measures.
-- **Model multivariate data:** six location and covariance estimators, including
+- **Model multivariate data:** seven location and covariance estimators, including
   regularized covariance for data with more variables than observations.
-- **Detect outliers:** Stahel-Donoho and skewness-adjusted outlyingness with
-  projection depth, as scikit-learn outlier detectors.
+- **Reduce, classify and test:** robust principal components (ROBPCA and
+  projection pursuit), linear and quadratic discriminant analysis, Hotelling's
+  T² and one-way MANOVA.
+- **Detect outliers:** Stahel-Donoho, adjusted and directional outlyingness;
+  halfspace and regression depth, Tukey medians and bagplots.
 - **Fit robust regressions:** MM, S and least trimmed squares estimators,
-  resistant to vertical outliers and bad leverage points.
-- **Inspect diagnostics:** outlier maps, distance-distance plots, tolerance
-  ellipses, adjusted boxplots and outlyingness plots with Matplotlib.
+  resistant to vertical outliers and bad leverage points; nonlinear Huber
+  regression and robust logistic and Poisson generalized linear models.
+- **Publish the diagnostics:** regression and PCA outlier maps, residual and quantile plots,
+  distance-distance plots, tolerance ellipses, biplots, scree plots,
+  classification regions, adjusted boxplots, bagplots and outlyingness plots with Matplotlib.
 - **Work with familiar tools:** NumPy-compatible inputs and the scikit-learn
   estimator interface for covariance and regression models.
 - **Inspect the methods:** documented formulas, scientific references, numerical
@@ -162,6 +167,44 @@ p-values with `summary()`. See the
 [regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
 to choose an estimator and detect outliers.
 
+For nonlinear curves, use `NonlinearMRegressor(model, start)`; its
+[guide](https://omarbecerrasierra.github.io/robustmodels/regression.html#nonlinear-robust-regression)
+explains starting values and standard errors. Binary and Poisson responses have
+[dedicated robust GLMs](https://omarbecerrasierra.github.io/robustmodels/glm.html).
+The [depth guide](https://omarbecerrasierra.github.io/robustmodels/depth.html)
+adds halfspace and regression depth, Tukey medians and a bagplot gallery.
+
+## Find robust principal components
+
+Classical PCA follows the directions of largest variance, which a few outliers
+can create. ROBPCA estimates the subspace of the bulk of the data and measures
+how far each observation lies from it:
+
+```python
+import numpy as np
+from robustmodels.multivariate import ROBPCA
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(100, 2)) @ rng.normal(size=(2, 20))  # a plane in 20-D
+X += 0.1 * rng.normal(size=X.shape)
+X[:10] += 5  # ten outliers away from the plane
+
+pca = ROBPCA(random_state=0).fit(X)
+print("Components:", pca.n_components_)
+print("Rows to inspect:", np.flatnonzero(~pca.support_).tolist())
+```
+
+```text
+Components: 2
+Rows to inspect: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 40, 69, 70]
+```
+
+The fitted plane is within 0.1 degrees of the plane of the 90 regular rows;
+classical PCA of all rows is 45 degrees away. The same module provides
+`RobustLDA` and `RobustQDA` classifiers and the `hotelling_t2` and `manova`
+tests. See the
+[multivariate guide](https://omarbecerrasierra.github.io/robustmodels/multivariate.html).
+
 ## Plot the diagnostics
 
 Use a fitted estimator to inspect the observations behind its flags:
@@ -179,7 +222,7 @@ subplots. Save with `ax.figure.savefig("outlyingness.png", dpi=300)`.
 Legends omit empty classes and include observation counts; labels use
 zero-based row positions. The
 [diagnostic guide](https://omarbecerrasierra.github.io/robustmodels/plots.html)
-includes rendered examples of all five plots, formulas and interpretation.
+includes rendered examples of every plot, formulas and interpretation.
 The [validation notes](https://omarbecerrasierra.github.io/robustmodels/validation.html)
 explain the pre-release checks and differences from R.
 
@@ -192,9 +235,16 @@ explain the pre-release checks and differences from R.
 | Describe asymmetry | `scale.medcouple` | Robust skewness; `lmc` and `rmc` describe the tails. |
 | Estimate covariance when observations outnumber variables | `MCD` | Supports random or deterministic starts. |
 | Estimate covariance when variables outnumber observations | `MRCD` | Regularizes toward an identity target in standardized coordinates. |
-| Explore other multivariate approaches | `OGK`, `MVE`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
-| Flag outliers in skewed multivariate data | `AdjustedOutlyingness` | Adjusted boxplot on many projections; `StahelDonohoOutlyingness` for symmetric data. |
+| Explore other multivariate approaches | `OGK`, `MVE`, `StahelDonoho`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
+| Reduce dimension with outliers present | `ROBPCA` | Also for more variables than observations; `ProjectionPursuitPCA` needs no covariance. |
+| Classify when training data contain outliers | `RobustLDA` or `RobustQDA` | MCD-based; every class needs more observations than variables. |
+| Test mean vectors | `hotelling_t2`, `manova` | One sample or paired differences; two or more groups. |
+| Flag outliers in skewed multivariate data | `AdjustedOutlyingness` or `DirectionalOutlyingness` | Adjusted whiskers or side-specific robust scales; `StahelDonohoOutlyingness` for symmetric data. |
 | Fit a linear regression with outliers | `MMRegressor` | 50% breakdown and 95% efficiency; `LTSRegressor` and `SRegressor` are alternatives. |
+| Fit a nonlinear response curve | `NonlinearMRegressor` | Huber weights; supply the model callable and starting parameters. |
+| Classify two groups with robust logistic regression | `MallowsLogisticRegression` or `BYLogisticRegression` | Bounded residual influence; optional leverage protection. |
+| Fit nonnegative responses with a Poisson model | `MallowsPoissonRegressor` or `MTPoissonRegressor` | MT uses a bounded transformed loss and random starts. |
+| Describe bivariate centrality and outliers | `halfspace_depth`, `halfspace_median`, `plots.bagplot` | Exact bivariate depths; subset-based bag for large samples. |
 
 For example, regularized covariance can be fitted to a wide matrix:
 
@@ -220,10 +270,13 @@ for sample-size requirements, parameters and worked examples.
 | --- | --- |
 | `robustmodels.location` | `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean` |
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
-| `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `SEstimator`, `MMEstimator` |
-| `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor` |
-| `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness` |
-| `robustmodels.plots` | `outlier_map`, `distance_distance`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot` |
+| `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `StahelDonoho`, `SEstimator`, `MMEstimator` |
+| `robustmodels.multivariate` | `ROBPCA`, `ProjectionPursuitPCA`, `RobustLDA`, `RobustQDA`, `hotelling_t2`, `manova` |
+| `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor`, `NonlinearMRegressor` |
+| `robustmodels.glm` | `MallowsLogisticRegression`, `MallowsPoissonRegressor`, `BYLogisticRegression`, `MTPoissonRegressor` |
+| `robustmodels.depth` | `halfspace_depth`, `halfspace_median`, `regression_depth`, `bagplot_stats` |
+| `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness`, `DirectionalOutlyingness` |
+| `robustmodels.plots` | `outlier_map`, `residual_plot`, `residual_qq`, `distance_distance`, `distance_qq`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot`, `pca_outlier_map`, `scree_plot`, `biplot`, `discriminant_plot`, `bagplot` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,
