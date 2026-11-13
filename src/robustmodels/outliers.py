@@ -19,9 +19,14 @@ from sklearn.utils.validation import check_is_fitted, validate_data
 from ._validation import as_generator, check_count
 from .scale import medcouple
 
-__all__ = ["AdjustedOutlyingness", "StahelDonohoOutlyingness"]
+__all__ = ["AdjustedOutlyingness", "DirectionalOutlyingness", "StahelDonohoOutlyingness"]
 
 _MAD = 1 / stats.norm.ppf(0.75)  # makes the MAD consistent at the normal model
+_DO_TUNING = 2.1  # Rousseeuw, Raymaekers & Hubert (2018): 85% efficiency
+# alpha: integral over (0, inf) of rho(t) = min((t / c)^2, 1) against the normal density
+_DO_ALPHA = (
+    stats.norm.cdf(_DO_TUNING) - 0.5 - _DO_TUNING * stats.norm.pdf(_DO_TUNING)
+) / _DO_TUNING**2 + stats.norm.sf(_DO_TUNING)
 
 
 class _ProjectionOutlyingness(OutlierMixin, BaseEstimator):
@@ -204,6 +209,82 @@ class AdjustedOutlyingness(_ProjectionOutlyingness):
         y = projections - self.centers_
         whisker = np.where(y > 0, self.upper_whiskers_, self.lower_whiskers_)
         return _ratio(np.abs(y), whisker)
+
+
+class DirectionalOutlyingness(_ProjectionOutlyingness):
+    """Outlier detection for skewed data by directional outlyingness (Rousseeuw et al. 2018).
+
+    On each direction ``u``, the distance of ``u'x`` to the median of the
+    projections is divided by a scale of the half sample on the same side:
+    ``s_a`` above the median and ``s_b`` below. Each is a one-step M-estimator
+    of scale of the deviations from the median, ``s = s_o sqrt(sum(rho(z_i /
+    s_o)) / (2 alpha h))``, with ``s_o`` the median of the deviations divided
+    by the 0.75 normal quantile, ``rho(t) = min((t / 2.1)^2, 1)`` and ``h =
+    (n + 1) // 2`` deviations per side; ``alpha`` makes both scales consistent
+    at the normal model. The outlyingness is the largest ratio over the
+    directions. Unlike :class:`AdjustedOutlyingness` it needs no medcouple, so
+    it is faster and its scales cannot be inflated by a few far points.
+    R's mrfDepth uses ``1.54`` for ``1 / (2 sqrt(alpha)) = 1.534`` and leaves
+    the median out of the half samples when ``n`` is odd; this class follows
+    the paper. Directions and cutoff as in :class:`StahelDonohoOutlyingness`.
+
+    Parameters
+    ----------
+    n_directions : int, default None
+        Number of directions; ``250 * n_features`` by default.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed for the random directions.
+
+    Attributes
+    ----------
+    outlyingness_ : ndarray of shape (n_samples,)
+        Directional outlyingness of the training data.
+    cutoff_ : float
+        ``exp(median(L) + mad(L) * z) - 0.1``, with ``L = log(0.1 + outlyingness_)``
+        and ``z`` the 0.995 normal quantile.
+    offset_ : float
+        Depth at the cutoff, ``1 / (1 + cutoff_)``.
+    directions_ : ndarray of shape (n_features, n_directions)
+        Unit directions.
+    centers_ : ndarray of shape (n_directions,)
+        Median of the training projections on each direction.
+    lower_scales_, upper_scales_ : ndarray of shape (n_directions,)
+        Scales below and above the median.
+
+    References
+    ----------
+    Rousseeuw, P. J., Raymaekers, J. and Hubert, M. (2018). A measure of
+    directional outlyingness with applications to image data and video.
+    *Journal of Computational and Graphical Statistics*, 27(2), 345-359.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.outliers import DirectionalOutlyingness
+    >>> X = np.random.default_rng(0).lognormal(size=(100, 2))
+    >>> X[:5] = [-3, -3]  # five outliers on the short side
+    >>> do = DirectionalOutlyingness(random_state=0).fit(X)
+    >>> np.flatnonzero(do.predict(X) == -1).tolist()
+    [0, 1, 2, 3, 4]
+    """
+
+    def _fit_projections(self, projections):
+        ordered = np.sort(projections, axis=0)
+        half = (len(ordered) + 1) // 2
+        self.centers_ = np.median(ordered, axis=0)
+        self.lower_scales_ = _half_scale(self.centers_ - ordered[:half])
+        self.upper_scales_ = _half_scale(ordered[-half:] - self.centers_)
+
+    def _outlyingness(self, projections):
+        y = projections - self.centers_
+        return _ratio(np.abs(y), np.where(y > 0, self.upper_scales_, self.lower_scales_))
+
+
+def _half_scale(deviations):
+    """One-step M-scale of each column of nonnegative deviations from the median."""
+    initial = _MAD * np.median(deviations, axis=0)
+    rho = np.minimum((_ratio(deviations, initial) / _DO_TUNING) ** 2, 1)
+    return initial * np.sqrt(rho.mean(axis=0) / (2 * _DO_ALPHA))
 
 
 def _directions(X, n_directions, rng):

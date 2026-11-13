@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+- Add robust logistic and Poisson GLMs: Mallows, Bianco–Yohai (with optional
+  leverage trimming) and MT, with sandwich inference and coefficient tables.
+- Add nonlinear Huber M regression, final-residual scale and covariance,
+  model-output validation and explicit convergence diagnostics.
+- Add halfspace depth, regression depth, the bivariate Tukey median,
+  bagplot statistics and `plots.bagplot`, including degenerate bags.
+- Add directional outlyingness with side-specific robust scales.
+- Add frozen R witnesses, independent definition
+  checks, scikit-learn checks and guides for the new methods.
+
+- Add `multivariate`: robust principal components (`ROBPCA` and
+  `ProjectionPursuitPCA`), robust discriminant analysis (`RobustLDA` and
+  `RobustQDA`), the robust one-sample Hotelling test `hotelling_t2` and the
+  robust one-way `manova`. ROBPCA, the discriminant rules and Hotelling's test
+  agree with rrcov to rounding error on the reference data.
+- Add `covariance.StahelDonoho`, the Stahel-Donoho estimator of location and
+  scatter with the weights of Maronna and Yohai (1995).
+- Add `plots.pca_outlier_map`, `plots.scree_plot` and `plots.biplot` for robust
+  PCA, `plots.discriminant_plot` for classification regions,
+  `plots.distance_qq` (chi-square quantile plot of robust distances),
+  `plots.residual_plot` (residuals against fitted values) and
+  `plots.residual_qq` (normal quantile plot of regression residuals).
+- Fix `plots.outlier_map` accepting a response whose length differs from the
+  number of rows of `X`.
+- `plots.distance_distance`, `plots.tolerance_ellipse` and `plots.outlier_map`
+  raise `ValueError` for a singular robust covariance instead of drawing a
+  97.5% reference that does not apply.
+- Fix `scale.medcouple`, `lmc` and `rmc` returning `NaN` for finite values close
+  to the largest float.
+- `covariance.h_alpha_n` raises `ValueError` when `n <= p` instead of returning
+  a subset larger than the sample.
+
 ## 0.1.3 (2026-11-12)
 
 - Add `outliers.StahelDonohoOutlyingness` and `outliers.AdjustedOutlyingness`,

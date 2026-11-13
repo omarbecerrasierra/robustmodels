@@ -2,6 +2,7 @@ import itertools
 
 import numpy as np
 import pytest
+from scipy.stats import chi2
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 import reference as ref
@@ -12,6 +13,7 @@ from robustmodels.covariance import (
     OGK,
     MMEstimator,
     SEstimator,
+    StahelDonoho,
     h_alpha_n,
     mcd_small_sample,
 )
@@ -28,7 +30,7 @@ ESTIMATORS = [
 ]
 
 
-@parametrize_with_checks(ESTIMATORS)
+@parametrize_with_checks([*ESTIMATORS, StahelDonoho(random_state=0)])
 def test_sklearn_compatible(estimator, check):
     check(estimator)
 
@@ -95,7 +97,8 @@ def test_mrcd_regularization_uses_paper_median_without_rounding_down():
 
 
 @pytest.mark.parametrize("est", [MCD(random_state=0), SEstimator(random_state=0),
-                                 MMEstimator(random_state=0), MVE(random_state=0)])  # fmt: skip
+                                 MMEstimator(random_state=0), MVE(random_state=0),
+                                 StahelDonoho(n_directions=10**6)])  # fmt: skip
 def test_affine_equivariance(est):
     rng = np.random.default_rng(2)
     X = rng.standard_t(3, size=(60, 3))
@@ -207,6 +210,41 @@ def test_invalid_parameters_name_the_parameter(estimator, parameter):
 def test_mcd_rejects_too_many_features():
     with pytest.raises(ValueError, match="use MRCD"):
         MCD().fit(np.eye(3))
+    with pytest.raises(ValueError, match="h_alpha_n needs n > p"):
+        h_alpha_n(0.5, 10, 30)  # no subset of 20 observations among 10
+
+
+def test_stahel_donoho_follows_its_definition():
+    X = np.random.default_rng(31).normal(size=(80, 3))
+    X[:8] += 9
+    fit = StahelDonoho(random_state=0).fit(X)
+    cutoff = chi2.ppf(0.95, 3)
+    expected = np.minimum(1, cutoff / fit.outlyingness_**2)
+    np.testing.assert_allclose(fit.weights_, expected)
+    assert fit.weights_[:8].max() < 0.2 and np.mean(fit.weights_[8:] == 1) > 0.8
+    location = fit.weights_ @ X / fit.weights_.sum()
+    np.testing.assert_allclose(fit.location_, location)
+    assert np.abs(fit.location_).max() < 0.4
+    centered = X - location
+    scatter = (fit.weights_[:, None] * centered).T @ centered
+    shape = fit.covariance_ / np.trace(fit.covariance_)
+    np.testing.assert_allclose(shape, scatter / np.trace(scatter))
+    assert np.median(fit.dist_) == pytest.approx(chi2.ppf(0.5, 3))
+
+
+def test_stahel_donoho_is_consistent_at_the_normal_model():
+    X = np.random.default_rng(32).normal(size=(2000, 3)) * [1, 2, 3]
+    fit = StahelDonoho(n_directions=200, random_state=0).fit(X)
+    assert np.diag(fit.covariance_) == pytest.approx([1, 4, 9], rel=0.1)
+
+
+def test_stahel_donoho_rejects_degenerate_input():
+    X = np.random.default_rng(33).normal(size=(40, 2))
+    with pytest.raises(ValueError, match="quantile"):
+        StahelDonoho(quantile=1).fit(X)
+    X[:30] = 0  # the rest is infinitely outlying and gets weight 0
+    with pytest.raises(ValueError, match="hyperplane"):
+        StahelDonoho(random_state=0).fit(X)
 
 
 def test_mrcd_singular_covariance_raises_a_clear_error():

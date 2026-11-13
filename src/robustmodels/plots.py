@@ -16,13 +16,23 @@ from scipy.stats import chi2
 from sklearn.covariance import EmpiricalCovariance
 
 from ._validation import as_1d, check_count
+from .covariance import MCD, _logdet
+from .depth import bagplot_stats
 from .scale import medcouple
 
 __all__ = [
     "adjusted_boxplot",
+    "bagplot",
+    "biplot",
+    "discriminant_plot",
     "distance_distance",
+    "distance_qq",
     "outlier_map",
     "outlyingness_plot",
+    "pca_outlier_map",
+    "residual_plot",
+    "residual_qq",
+    "scree_plot",
     "tolerance_ellipse",
 ]
 
@@ -35,6 +45,8 @@ REGULAR = "#9b9992"
 BLUE = "#2a78d6"  # robust estimates
 ORANGE = "#eb6834"  # flagged outliers
 AQUA = "#1baf7a"  # classical estimates, good leverage points
+VIOLET = "#7a5fd0"
+_CLASSES = [(BLUE, "o"), (AQUA, "s"), (VIOLET, "^"), (SECONDARY, "v")]  # orange marks errors
 
 _FIGSIZE = (5.2, 3.8)
 
@@ -53,7 +65,10 @@ def outlier_map(model, X, y, *, id_n=3, random_state=None, ax=None):
     model : fitted regressor with ``predict`` and ``scale_``
         For example :class:`~robustmodels.regression.MMRegressor`.
     X : array-like of shape (n_samples, n_features)
+        Predictors of full rank; ``ValueError`` if their MCD covariance is
+        singular, because the chi-square cutoff does not apply.
     y : array-like of shape (n_samples,)
+        One response per row of ``X``.
     id_n : int, default 3
         Positive maximum number of eligible observations labeled with their
         zero-based row positions. Severity combines residual and predictor distance.
@@ -72,15 +87,11 @@ def outlier_map(model, X, y, *, id_n=3, random_state=None, ax=None):
     outliers and leverage points. *Journal of the American Statistical
     Association*, 85(411), 633-639.
     """
-    from .covariance import MCD
-
     check_count("id_n", id_n)
-    X = np.asarray(X, dtype=float)
-    X = X[:, None] if X.ndim == 1 else X
-    if not model.scale_ > 0:
-        raise ValueError("the model's scale_ is 0 (exact fit): residuals cannot be standardized")
-    residuals = (as_1d(y) - model.predict(X)) / model.scale_
-    distances = np.sqrt(MCD(random_state=random_state).fit(X).dist_)
+    X, residuals = _standardized_residuals(model, X, y)
+    mcd = MCD(random_state=random_state).fit(X)
+    _check_full_rank(mcd)
+    distances = np.sqrt(mcd.dist_)
     d_cut, r_cut = np.sqrt(chi2.ppf(0.975, X.shape[1])), 2.5
     far, large = distances > d_cut, np.abs(residuals) > r_cut
     ax = _axes(ax)
@@ -127,7 +138,8 @@ def distance_distance(model, X, *, id_n=3, ax=None):
     Parameters
     ----------
     model : fitted covariance estimator with ``mahalanobis``
-        For example :class:`~robustmodels.covariance.MCD`.
+        For example :class:`~robustmodels.covariance.MCD`. ``ValueError`` if its
+        covariance is singular, because the chi-square cutoff does not apply.
     X : array-like of shape (n_samples, n_features)
     id_n : int, default 3
         Positive maximum number of flagged robust distances labeled with their
@@ -145,6 +157,7 @@ def distance_distance(model, X, *, id_n=3, ax=None):
     """
     check_count("id_n", id_n)
     X = np.asarray(X, dtype=float)
+    _check_full_rank(model)
     robust = np.sqrt(model.mahalanobis(X))
     # EmpiricalCovariance uses divisor n; classical diagnostics use n - 1.
     classical = np.sqrt(EmpiricalCovariance().fit(X).mahalanobis(X) * (len(X) - 1) / len(X))
@@ -181,6 +194,8 @@ def tolerance_ellipse(model, X, *, feature_names=None, id_n=3, ax=None):
     Parameters
     ----------
     model : fitted covariance estimator with ``location_`` and ``covariance_``
+        ``ValueError`` if its covariance is singular: the ellipse would
+        degenerate and the 97.5% label would not hold.
     X : array-like of shape (n_samples, 2)
     feature_names : sequence of two str, optional
         Exactly two axis labels; ``x_1`` and ``x_2`` by default.
@@ -200,6 +215,7 @@ def tolerance_ellipse(model, X, *, feature_names=None, id_n=3, ax=None):
     names = ["$x_1$", "$x_2$"] if feature_names is None else list(feature_names)
     if len(names) != 2:
         raise ValueError("feature_names must contain two labels")
+    _check_full_rank(model)
     radius = np.sqrt(chi2.ppf(0.975, 2))
     robust = np.sqrt(model.mahalanobis(X))
     flagged = robust > radius
@@ -300,8 +316,9 @@ def outlyingness_plot(detector, X=None, *, id_n=3, ax=None):
 
     Parameters
     ----------
-    detector : fitted :class:`~robustmodels.outliers.StahelDonohoOutlyingness` or
-        :class:`~robustmodels.outliers.AdjustedOutlyingness`
+    detector : fitted :class:`~robustmodels.outliers.StahelDonohoOutlyingness`,
+        :class:`~robustmodels.outliers.AdjustedOutlyingness` or
+        :class:`~robustmodels.outliers.DirectionalOutlyingness`
     X : array-like of shape (n_samples, n_features), optional
         Observations to score against the fitted detector; training data by
         default. The cutoff is retained from training, without refitting.
@@ -341,14 +358,494 @@ def outlyingness_plot(detector, X=None, *, id_n=3, ax=None):
     ax.set_xlim(-0.02 * len(values) - 1, 1.02 * len(values))
     _label_extremes(ax, index, shown, values, id_n, flagged)
     ax.set_xlabel("Observation index")
-    name = type(detector).__name__
-    measure = (
-        "Adjusted outlyingness" if name.startswith("Adjusted") else "Stahel-Donoho outlyingness"
-    )
+    kinds = {"Adjusted": "Adjusted", "Directional": "Directional"}
+    measure = f"{kinds.get(type(detector).__name__[:-12], 'Stahel-Donoho')} outlyingness"
     ax.set_ylabel(measure)
     _title(ax, measure, f"{flagged.sum()} of {len(values)} observations above the cutoff")
     _legend(ax)
     return ax
+
+
+def pca_outlier_map(model, X=None, *, id_n=3, ax=None):
+    """PCA outlier map (Hubert, Rousseeuw & Vanden Branden 2005).
+
+    Orthogonal distances to the principal subspace against score distances
+    inside it. The two cutoffs of the fitted model split the observations into
+    regular observations, good leverage points (far inside the subspace),
+    orthogonal outliers (far from the subspace) and bad leverage points (both).
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.multivariate.ROBPCA` or
+        :class:`~robustmodels.multivariate.ProjectionPursuitPCA`
+        It must keep fewer components than the rank of the data; otherwise
+        there are no orthogonal distances and ``ValueError`` is raised.
+    X : array-like of shape (n_samples, n_features), optional
+        Observations to place on the map; training data by default. The
+        cutoffs are retained from training.
+    id_n : int, default 3
+        Positive maximum number of flagged observations labeled with their
+        zero-based row positions.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Hubert, M., Rousseeuw, P. J. and Vanden Branden, K. (2005). ROBPCA: a new
+    approach to robust principal component analysis. *Technometrics*, 47(1),
+    64-79.
+    """
+    check_count("id_n", id_n)
+    s_cut, o_cut = model.score_cutoff_, model.orthogonal_cutoff_
+    if not o_cut > 0:
+        raise ValueError("the components span the data: there are no orthogonal distances")
+    score, orthogonal = model.score_distances_, model.orthogonal_distances_
+    if X is not None:
+        score, orthogonal = model.distances(X)
+    far, off = score > s_cut, orthogonal > o_cut
+    ax = _axes(ax)
+    x_max = 1.08 * max(score.max(), s_cut * 1.25)
+    y_max = 1.3 * max(orthogonal.max(), o_cut * 1.4)  # room for the cutoff label
+    ax.set(xlim=(0, x_max), ylim=(0, y_max))
+    ax.fill_between([0, s_cut], o_cut, y_max, color=BLUE, alpha=0.06, lw=0, zorder=0)
+    ax.fill_between([s_cut, x_max], o_cut, y_max, color=ORANGE, alpha=0.08, lw=0, zorder=0)
+    ax.fill_between([s_cut, x_max], 0, o_cut, color=AQUA, alpha=0.06, lw=0, zorder=0)
+    groups = [
+        ("Regular", ~far & ~off, REGULAR, "o"),
+        ("Orthogonal outliers", ~far & off, BLUE, "s"),
+        ("Good leverage", far & ~off, AQUA, "^"),
+        ("Bad leverage", far & off, ORANGE, "D"),
+    ]
+    for label, mask, color, marker in groups:
+        _points(ax, score[mask], orthogonal[mask], color, marker, f"{label} ({mask.sum()})")
+    _cutoff(ax, o_cut, "h", f"cutoff = {o_cut:.2f}")
+    k = model.n_components_
+    _cutoff(ax, s_cut, "v", rf"$\sqrt{{\chi^2_{{{k},0.975}}}} = {s_cut:.2f}$")
+    severity = np.maximum(score / s_cut, orthogonal / o_cut)
+    _label_extremes(ax, score, orthogonal, severity, id_n, severity > 1)
+    ax.set_xlabel(f"Score distance ({k} components)")
+    ax.set_ylabel("Orthogonal distance")
+    _title(ax, "PCA outlier map", type(model).__name__)
+    _legend(ax)
+    return ax
+
+
+def scree_plot(model, *, ax=None):
+    """Scree plot: the robust variance of each principal component.
+
+    Each point is labeled with the cumulative share of the variance of the
+    fitted components, so fit as many components as you want to compare.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.multivariate.ROBPCA` or
+        :class:`~robustmodels.multivariate.ProjectionPursuitPCA`
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    variances = np.asarray(model.explained_variance_)
+    number = np.arange(1, len(variances) + 1)
+    share = np.cumsum(variances) / variances.sum()
+    ax = _axes(ax)
+    ax.plot(number, variances, color=BLUE, lw=1.6, zorder=2)
+    _points(ax, number, variances, BLUE, "o", None)
+    for k, variance, cumulative in zip(number, variances, share, strict=True):
+        ax.annotate(
+            f"{cumulative:.0%}", (k, variance), xytext=(0, 9), textcoords="offset points",
+            ha="center", fontsize=8, color=SECONDARY, zorder=4,
+            bbox={"boxstyle": "round,pad=0.15", "facecolor": "white", "edgecolor": "none"},
+        )  # fmt: skip
+    ax.set_xticks(number)
+    ax.set(xlim=(0.5, len(variances) + 0.5), ylim=(0, 1.18 * variances.max()))
+    ax.grid(axis="x", visible=False)
+    ax.set_xlabel("Principal component")
+    ax.set_ylabel("Robust variance")
+    _title(ax, "Scree plot", "labels: cumulative share of the variance of these components")
+    return ax
+
+
+def bagplot(
+    X, *, factor=3.0, feature_names=None, id_n=3, max_samples=200, random_state=None, ax=None
+):
+    """Bagplot, the bivariate boxplot of Rousseeuw, Ruts & Tukey (1999).
+
+    The cross is the Tukey median, the dark bag holds the half of the
+    observations with the largest halfspace depth and the light loop is the
+    convex hull of the observations inside the fence, the bag inflated by
+    ``factor`` from the median. Observations outside the fence are flagged. The
+    shape of the bag and the loop shows location, spread, correlation and
+    skewness, as the box and whiskers do for one variable.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, 2)
+    factor : float, default 3.0
+        Inflation of the bag that gives the fence.
+    feature_names : sequence of two str, optional
+        Axis labels; ``x0`` and ``x1`` by default.
+    id_n : int, default 3
+        Maximum number of outliers labeled with their zero-based row positions,
+        the farthest from the median after scaling by the sample ranges first.
+    max_samples : int, default 200
+        Subset size for the median and the bag of larger samples; see
+        :func:`~robustmodels.depth.bagplot_stats`.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed for the subset.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    check_count("id_n", id_n)
+    stats = bagplot_stats(X, factor=factor, max_samples=max_samples, random_state=random_state)
+    X = np.asarray(X, dtype=float)
+    names = ["x0", "x1"] if feature_names is None else [str(name) for name in feature_names]
+    if len(names) != 2:
+        raise ValueError(f"expected 2 feature names, got {len(names)}")
+    flagged = stats.outliers
+    ax = _axes(ax)
+    ax.fill(*stats.loop.T, color=BLUE, alpha=0.14, lw=0, zorder=1, label="Loop")
+    ax.fill(*stats.bag.T, color=BLUE, alpha=0.38, lw=0, zorder=1.2, label="Bag (50%)")
+    fence = np.vstack([stats.fence, stats.fence[:1]])
+    ax.plot(*fence.T, color=SECONDARY, lw=0.9, ls=(0, (4, 3)), zorder=1.5, label="Fence")
+    _points(ax, *X[~flagged].T, REGULAR, "o", f"Regular ({(~flagged).sum()})")
+    _points(ax, *X[flagged].T, ORANGE, "D", f"Outliers ({flagged.sum()})")
+    ax.plot(*stats.center, marker="+", color=INK, ms=11, mew=1.6, ls="none", zorder=4,
+            label="Tukey median")  # fmt: skip
+    offsets = X - stats.center
+    reach = np.linalg.norm(offsets / np.ptp(X, axis=0), axis=1)
+    _label_extremes(ax, X[:, 0], X[:, 1], reach, id_n, flagged)
+    ax.set_xlabel(names[0])
+    ax.set_ylabel(names[1])
+    _title(ax, "Bagplot", f"{flagged.sum()} of {len(X)} observations outside the fence")
+    _legend(ax)
+    return ax
+
+
+def biplot(model, X, *, components=(0, 1), feature_names=None, n_arrows=10, id_n=3, ax=None):
+    """Biplot of a robust PCA: scores of the observations and loadings of the variables.
+
+    Points are the scores on two components. Arrows are the loadings of the
+    variables on the same components, all multiplied by one factor so that
+    the longest arrow reaches 80% of the largest score. Observations beyond the
+    score or orthogonal cutoff of the model are flagged.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.multivariate.ROBPCA` or
+        :class:`~robustmodels.multivariate.ProjectionPursuitPCA`
+        With at least two components.
+    X : array-like of shape (n_samples, n_features)
+        Observations to draw, usually the training data.
+    components : pair of int, default (0, 1)
+        Zero-based components on the horizontal and vertical axes.
+    feature_names : sequence of str, optional
+        One name per variable; ``x_1``, ``x_2``, ... by default.
+    n_arrows : int, default 10
+        Positive maximum number of variables drawn, those with the longest arrows.
+    id_n : int, default 3
+        Positive maximum number of flagged observations labeled with their
+        zero-based row positions.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Gabriel, K. R. (1971). The biplot graphic display of matrices with
+    application to principal component analysis. *Biometrika*, 58(3), 453-467.
+    """
+    check_count("id_n", id_n)
+    check_count("n_arrows", n_arrows)
+    a, b = components
+    if model.n_components_ < 2 or not 0 <= min(a, b) < max(a, b) < model.n_components_:
+        raise ValueError("components must be two different components of the model")
+    p = model.components_.shape[1]
+    names = [f"$x_{{{j + 1}}}$" for j in range(p)] if feature_names is None else feature_names
+    if len(names) != p:
+        raise ValueError(f"feature_names must contain {p} labels")
+    scores = model.transform(X)[:, [a, b]]
+    score, orthogonal = model.distances(X)
+    severity = score / model.score_cutoff_
+    if model.orthogonal_cutoff_ > 0:
+        severity = np.maximum(severity, orthogonal / model.orthogonal_cutoff_)
+    flagged = severity > 1
+    ax = _axes(ax)
+    ax.axhline(0, color=AXIS, lw=0.8, zorder=1)
+    ax.axvline(0, color=AXIS, lw=0.8, zorder=1)
+    _points(ax, *scores[~flagged].T, REGULAR, "o", f"Regular ({(~flagged).sum()})")
+    _points(ax, *scores[flagged].T, ORANGE, "D", f"Flagged ({flagged.sum()})")
+    loadings = model.components_[[a, b]].T
+    lengths = np.linalg.norm(loadings, axis=1)
+    arrows = loadings * 0.8 * np.abs(scores).max() / lengths.max()
+    for j in np.argsort(-lengths, kind="stable")[:n_arrows]:
+        ax.annotate(
+            "", arrows[j], (0, 0), zorder=4,
+            arrowprops={"arrowstyle": "-|>", "color": BLUE, "lw": 1.2, "shrinkA": 0, "shrinkB": 0},
+        )  # fmt: skip
+        ax.annotate(
+            names[j], arrows[j], xytext=3 * np.sign(arrows[j]), textcoords="offset points",
+            ha="left" if arrows[j, 0] >= 0 else "right", fontsize=8, color=BLUE, zorder=4,
+        )  # fmt: skip
+    _label_extremes(ax, scores[:, 0], scores[:, 1], severity, id_n, flagged)
+    variances = model.explained_variance_
+    ax.set_xlabel(f"PC{a + 1}  (robust variance {variances[a]:.3g})")
+    ax.set_ylabel(f"PC{b + 1}  (robust variance {variances[b]:.3g})")
+    _title(ax, "Biplot", f"{type(model).__name__}: scores and scaled loadings")
+    _legend(ax)
+    return ax
+
+
+def discriminant_plot(model, X, y, *, feature_names=None, ax=None):
+    """Classification regions of a discriminant rule for two variables.
+
+    Shaded regions show the class the rule predicts at each point and gray
+    lines the boundaries between classes. Crosses and colored ellipses are the
+    robust center and 97.5% tolerance ellipse of each class, from the fitted
+    covariance (one for all classes in linear discriminant analysis).
+    Observations are drawn by their true class; those the rule assigns to
+    another class are circled. The error in the subtitle is the share of the
+    plotted observations that are misclassified: for the training data it is
+    the apparent error, which is optimistic.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.multivariate.RobustLDA` or
+        :class:`~robustmodels.multivariate.RobustQDA`
+    X : array-like of shape (n_samples, 2)
+    y : array-like of shape (n_samples,)
+        True class of each observation.
+    feature_names : sequence of two str, optional
+        Axis labels; ``x_1`` and ``x_2`` by default.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    X, y = np.asarray(X, dtype=float), np.asarray(y)
+    if X.ndim != 2 or X.shape[1] != 2:
+        raise ValueError(f"discriminant_plot needs two variables, got shape {X.shape}")
+    if len(y) != len(X):
+        raise ValueError(f"y has {len(y)} values for {len(X)} rows of X")
+    names = ["$x_1$", "$x_2$"] if feature_names is None else list(feature_names)
+    if len(names) != 2:
+        raise ValueError("feature_names must contain two labels")
+    classes = list(model.classes_)
+    styles = [_CLASSES[k % len(_CLASSES)] for k in range(len(classes))]
+    low, high = X.min(axis=0), X.max(axis=0)
+    pad = 0.08 * (high - low)
+    grid = np.meshgrid(*(np.linspace(low[j] - pad[j], high[j] + pad[j], 500) for j in (0, 1)))
+    region = np.searchsorted(classes, model.predict(np.column_stack([g.ravel() for g in grid])))
+    region = region.reshape(grid[0].shape)
+    ax = _axes(ax)
+    levels = np.arange(len(classes) + 1) - 0.5
+    ax.contourf(*grid, region, levels=levels, colors=[c for c, _ in styles], alpha=0.1, zorder=0)
+    ax.contour(*grid, region, levels=levels[1:-1], colors=SECONDARY, linewidths=0.9, zorder=1)
+    wrong = model.predict(X) != y
+    covariances = np.broadcast_to(model._covariances(), (len(classes), 2, 2))
+    radius = np.sqrt(chi2.ppf(0.975, 2))
+    for k, (label, (color, marker)) in enumerate(zip(classes, styles, strict=True)):
+        mask = y == label
+        _points(ax, X[mask, 0], X[mask, 1], color, marker, f"{label} ({mask.sum()})")
+        ax.plot(*_ellipse(model.means_[k], covariances[k], radius), color=color, lw=1.3, zorder=2)
+        ax.plot(*model.means_[k], marker="+", ms=10, mew=1.8, color=INK, zorder=5)
+    if wrong.any():
+        ax.scatter(
+            X[wrong, 0], X[wrong, 1], s=90, facecolors="none", edgecolors=ORANGE,
+            linewidths=1.3, label=f"Misclassified ({wrong.sum()})", zorder=4,
+        )  # fmt: skip
+    ax.set(xlim=grid[0][0, [0, -1]], ylim=grid[1][[0, -1], 0])
+    ax.set_xlabel(names[0])
+    ax.set_ylabel(names[1])
+    error = f"{wrong.mean():.1%} of these observations misclassified"
+    _title(ax, "Classification regions", f"{type(model).__name__}: {error}")
+    _legend(ax)
+    return ax
+
+
+def distance_qq(model, X, *, id_n=3, ax=None):
+    """Chi-square quantile plot of robust distances.
+
+    Sorted robust distances against the square roots of the chi-square
+    quantiles at ``(i - 0.5) / n``. Regular multivariate normal observations
+    follow the diagonal; outliers leave it at the upper end. The dashed line is
+    the square root of the 0.975 chi-square quantile.
+
+    Parameters
+    ----------
+    model : fitted covariance estimator with ``mahalanobis``
+        For example :class:`~robustmodels.covariance.MCD`. ``ValueError`` if its
+        covariance is singular, because the chi-square reference does not apply.
+    X : array-like of shape (n_samples, n_features)
+    id_n : int, default 3
+        Positive maximum number of flagged distances labeled with their
+        zero-based row positions.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Rousseeuw, P. J. and van Zomeren, B. C. (1990). Unmasking multivariate
+    outliers and leverage points. *Journal of the American Statistical
+    Association*, 85(411), 633-639.
+    """
+    check_count("id_n", id_n)
+    X = np.asarray(X, dtype=float)
+    _check_full_rank(model)
+    p = X.shape[1]
+    distances = np.sqrt(model.mahalanobis(X))
+    quantiles = np.sqrt(chi2.ppf(_plotting_positions(distances), p))
+    cut = np.sqrt(chi2.ppf(0.975, p))
+    ax = _qq(ax, quantiles, distances, distances > cut, distances, id_n)
+    _cutoff(ax, cut, "h", rf"$\sqrt{{\chi^2_{{{p},0.975}}}} = {cut:.2f}$")
+    ax.set_xlabel(rf"Quantiles of $\sqrt{{\chi^2_{{{p}}}}}$")
+    ax.set_ylabel(f"Robust distance ({type(model).__name__})")
+    _title(ax, "Chi-square quantile plot", "regular normal observations follow the diagonal")
+    _legend(ax)
+    return ax
+
+
+def residual_qq(model, X, y, *, id_n=3, ax=None):
+    """Normal quantile plot of the standardized residuals of a robust regression.
+
+    Sorted residuals ``(y - model.predict(X)) / model.scale_`` against the
+    normal quantiles at ``(i - 0.5) / n``. Regular observations with normal
+    errors follow the diagonal; the dashed lines mark +-2.5.
+
+    Parameters
+    ----------
+    model : fitted regressor with ``predict`` and ``scale_``
+        For example :class:`~robustmodels.regression.MMRegressor`.
+    X : array-like of shape (n_samples, n_features)
+    y : array-like of shape (n_samples,)
+        One response per row of ``X``.
+    id_n : int, default 3
+        Positive maximum number of flagged residuals labeled with their
+        zero-based row positions.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    from scipy.stats import norm
+
+    check_count("id_n", id_n)
+    _, residuals = _standardized_residuals(model, X, y)
+    quantiles = norm.ppf(_plotting_positions(residuals))
+    ax = _qq(ax, quantiles, residuals, np.abs(residuals) > 2.5, np.abs(residuals), id_n)
+    for value in (-2.5, 2.5):
+        _cutoff(ax, value, "h", r"$\pm$2.5" if value > 0 else None)
+    ax.set_xlabel("Normal quantiles")
+    ax.set_ylabel(r"Standardized residual  $r_i / \hat\sigma$")
+    _title(ax, "Normal quantile plot of residuals", type(model).__name__)
+    _legend(ax)
+    return ax
+
+
+def residual_plot(model, X, y, *, id_n=3, ax=None):
+    """Standardized residuals of a robust regression against its fitted values.
+
+    Residuals ``(y - model.predict(X)) / model.scale_`` beyond +-2.5 are
+    flagged. Because the fit is robust, outliers keep large residuals instead
+    of pulling the fit towards them. A trend or a funnel shape among the
+    regular observations suggests a missing term or a variance that changes
+    with the mean.
+
+    Parameters
+    ----------
+    model : fitted regressor with ``predict`` and ``scale_``
+        For example :class:`~robustmodels.regression.MMRegressor`.
+    X : array-like of shape (n_samples, n_features)
+    y : array-like of shape (n_samples,)
+        One response per row of ``X``.
+    id_n : int, default 3
+        Positive maximum number of flagged residuals labeled with their
+        zero-based row positions.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Rousseeuw, P. J. and Leroy, A. M. (1987). *Robust Regression and Outlier
+    Detection*. Wiley.
+    """
+    check_count("id_n", id_n)
+    X, residuals = _standardized_residuals(model, X, y)
+    fitted = model.predict(X)
+    flagged = np.abs(residuals) > 2.5
+    ax = _axes(ax)
+    ax.axhline(0, color=AXIS, lw=0.9, zorder=1)
+    _points(
+        ax, fitted[~flagged], residuals[~flagged], REGULAR, "o", f"Regular ({(~flagged).sum()})"
+    )
+    _points(ax, fitted[flagged], residuals[flagged], ORANGE, "D", f"Flagged ({flagged.sum()})")
+    for value in (-2.5, 2.5):
+        _cutoff(ax, value, "h", r"$\pm$2.5" if value > 0 else None)
+    ax.set_ylim(min(residuals.min() * 1.15, -3.5), max(residuals.max() * 1.15, 3.5))
+    _label_extremes(ax, fitted, residuals, np.abs(residuals), id_n, flagged)
+    ax.set_xlabel("Fitted value")
+    ax.set_ylabel(r"Standardized residual  $r_i / \hat\sigma$")
+    _title(ax, "Residuals against fitted values", type(model).__name__)
+    _legend(ax)
+    return ax
+
+
+def _standardized_residuals(model, X, y):
+    """Two-dimensional ``X`` and the residuals of ``model`` divided by its scale."""
+    X = np.asarray(X, dtype=float)
+    X = X[:, None] if X.ndim == 1 else X
+    y = as_1d(y)
+    if len(y) != len(X):
+        raise ValueError(f"y has {len(y)} values for {len(X)} rows of X")
+    if not model.scale_ > 0:
+        raise ValueError("the model's scale_ is 0 (exact fit): residuals cannot be standardized")
+    return X, (y - model.predict(X)) / model.scale_
+
+
+def _plotting_positions(values):
+    """Probability ``(rank - 0.5) / n`` of each value, in the order given."""
+    positions = np.empty(len(values))
+    positions[np.argsort(values, kind="stable")] = (np.arange(len(values)) + 0.5) / len(values)
+    return positions
+
+
+def _qq(ax, quantiles, values, flagged, severity, id_n):
+    """Points of a quantile plot with its diagonal; flagged points in orange."""
+    ax = _axes(ax)
+    ends = [quantiles.min(), quantiles.max()]
+    ax.plot(ends, ends, color=AXIS, lw=0.9, zorder=1)
+    _points(
+        ax, quantiles[~flagged], values[~flagged], REGULAR, "o", f"Regular ({(~flagged).sum()})"
+    )
+    _points(ax, quantiles[flagged], values[flagged], ORANGE, "D", f"Flagged ({flagged.sum()})")
+    _label_extremes(ax, quantiles, values, severity, id_n, flagged)
+    return ax
+
+
+def _check_full_rank(model):
+    """The chi-square cutoffs assume a covariance matrix of full rank."""
+    if _logdet(model.covariance_) == -np.inf:
+        raise ValueError(
+            f"the {type(model).__name__} covariance is singular: distances ignore the "
+            "directions without spread, so the chi-square cutoff does not apply"
+        )
 
 
 def _axes(ax):

@@ -1,18 +1,19 @@
-"""Robust linear regression estimators and their fitting steps.
+"""Robust linear and nonlinear regression estimators and their fitting steps.
 
 The estimators follow the scikit-learn API: ``fit(X, y)`` takes observations in
 rows and sets ``coef_``, ``intercept_`` and ``scale_`` (robust scale of the
-residuals); ``predict(X)`` returns ``X @ coef_ + intercept_``.
+residuals); ``predict(X)`` returns ``X @ coef_ + intercept_``. Nonlinear M
+regression stores ``params_`` and evaluates the supplied model callable.
 """
 
 import warnings
 
 import numpy as np
-from scipy import stats
+from scipy import optimize, stats
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted, validate_data
 
-from ._validation import as_generator, check_count
+from ._validation import as_generator, check_count, check_range
 from .covariance import h_alpha_n, mcd_consistency
 from .scale import (
     _bisquare_weights,
@@ -23,7 +24,7 @@ from .scale import (
     mad,
 )
 
-__all__ = ["LTSRegressor", "MMRegressor", "SRegressor"]
+__all__ = ["LTSRegressor", "MMRegressor", "NonlinearMRegressor", "SRegressor"]
 
 # Residuals with |r / scale| above this get weight 0 (2.5% total, 1.25% per tail).
 _CUTOFF = stats.norm.ppf(0.9875)
@@ -440,21 +441,170 @@ class MMRegressor(_RobustRegressor):
             the residual scale.
         """
         check_is_fitted(self)
-        names = [f"x{j}" for j in range(self.n_features_in_)]
-        if feature_names is not None:
-            names = [str(name) for name in feature_names]
-            if len(names) != self.n_features_in_:
-                raise ValueError(f"expected {self.n_features_in_} feature names, got {len(names)}")
-        estimates = self.coef_
-        if self.fit_intercept:
-            names, estimates = ["(Intercept)", *names], np.r_[self.intercept_, self.coef_]
-        width = max(len(name) for name in names)
-        lines = [f"{'':{width}}  {'Estimate':>10}  {'Std. Error':>10}  {'t value':>8}  Pr(>|t|)"]
-        rows = zip(names, estimates, self.std_errors_, self.t_values_, self.p_values_, strict=True)
-        for name, estimate, error, t, pvalue in rows:
-            lines.append(f"{name:{width}}  {estimate:10.4g}  {error:10.4g}  {t:8.3f}  {pvalue:.3g}")
-        lines.append(f"Residual scale: {self.scale_:.4g}")
-        return "\n".join(lines)
+        table = _coefficient_table(self, feature_names, "t", self.t_values_)
+        return f"{table}\nResidual scale: {self.scale_:.4g}"
+
+
+class NonlinearMRegressor(RegressorMixin, BaseEstimator):
+    """Huber M-estimator of nonlinear regression.
+
+    Fits ``y = model(X, *params) + error`` by iteratively reweighted nonlinear
+    least squares: the residual scale is the median absolute residual divided
+    by 0.6745 and the weights are Huber's ``min(1, c / |r_i / scale|)``, as
+    R's ``nlrob`` by default. Large residuals have bounded influence, which
+    protects against outliers in ``y``; outliers in ``X`` (leverage points)
+    can still dominate the fit, and the result depends on the starting value.
+
+    Parameters
+    ----------
+    model : callable
+        ``model(X, *params)`` returns the fitted values, of shape (n_samples,).
+    start : array-like of shape (n_params,)
+        Starting value of the parameters.
+    c : float, default 1.345
+        Huber tuning constant, in units of the residual scale.
+    max_iter : int, default 50
+        Maximum reweighting steps; a ``RuntimeWarning`` reports non-convergence.
+    tol : float, default 1e-6
+        Relative change of the residuals at which the iterations stop.
+
+    Attributes
+    ----------
+    params_ : ndarray of shape (n_params,)
+        Estimated parameters.
+    scale_ : float
+        Residual scale.
+    weights_ : ndarray of shape (n_samples,)
+        Huber weights of the observations.
+    cov_params_ : ndarray of shape (n_params, n_params)
+        Asymptotic covariance matrix (Huber 1981):
+        ``scale_^2 (sum(psi^2) / (n - p)) / mean(psi')^2 (J'J)^-1``, with ``J``
+        the Jacobian of the model. ``nlrob`` uses the weighted ``J'WJ`` and the
+        mean squared weight instead, which is not the asymptotic variance.
+    std_errors_ : ndarray of shape (n_params,)
+        Standard errors.
+    n_iter_ : int
+        Reweighting steps.
+
+    References
+    ----------
+    Huber, P. J. (1981). *Robust Statistics*. Wiley.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.regression import NonlinearMRegressor
+    >>> def decay(X, a, b):
+    ...     return a * np.exp(-b * X[:, 0])
+    >>> rng = np.random.default_rng(0)
+    >>> X = rng.uniform(0, 5, size=(80, 1))
+    >>> y = decay(X, 10, 0.7) + rng.normal(scale=0.3, size=80)
+    >>> y[:8] += 15  # eight outliers
+    >>> fit = NonlinearMRegressor(decay, [5, 1]).fit(X, y)
+    >>> fit.params_.round(2).tolist()
+    [10.29, 0.71]
+    """
+
+    def __init__(self, model, start, *, c=1.345, max_iter=50, tol=1e-6):
+        self.model = model
+        self.start = start
+        self.c = c
+        self.max_iter = max_iter
+        self.tol = tol
+
+    def fit(self, X, y):
+        """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
+        check_range("c", self.c, 0, np.inf, low_open=True, high_open=True)
+        check_range("tol", self.tol, 0, np.inf, low_open=True, high_open=True)
+        check_count("max_iter", self.max_iter)
+        if not callable(self.model):
+            raise ValueError("model must be callable")
+        params = np.asarray(self.start, dtype=float)
+        if params.ndim != 1 or not params.size or not np.isfinite(params).all():
+            raise ValueError("start must be a nonempty finite 1-D parameter vector")
+        params = params.copy()
+        X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True, ensure_min_samples=2)
+        n, p = len(y), params.size
+        if n <= p:
+            raise ValueError(f"needs more observations than parameters (got n={n}, p={p})")
+
+        def residuals(params):
+            return y - self._evaluate(X, params)
+
+        current = residuals(params)
+        converged = False
+        for iteration in range(1, self.max_iter + 1):  # noqa: B007 (used after the loop)
+            scale = np.median(np.abs(current)) / 0.6745
+            if scale == 0:
+                converged = True
+                break
+            root = np.sqrt(_huber_weights(current / scale, self.c))
+            fit = optimize.least_squares(lambda b: root * residuals(b), params)  # noqa: B023
+            if not fit.success:
+                raise RuntimeError(f"nonlinear least squares failed: {fit.message}")
+            params = fit.x
+            previous, current = current, residuals(params)
+            change = np.linalg.norm(current - previous)
+            converged = change <= self.tol * max(np.linalg.norm(previous), 1e-10)
+            if converged:
+                break
+        if not converged:
+            warnings.warn("the M-estimator did not converge within max_iter", RuntimeWarning, 2)
+        scale = float(np.median(np.abs(current)) / 0.6745)
+        self.params_, self.scale_, self.n_iter_ = params, scale, iteration
+        self.converged_ = converged
+        if scale == 0:
+            warnings.warn("exact fit: most residuals are zero", RuntimeWarning, 2)
+            self.weights_ = (current == 0).astype(float)
+            self.cov_params_ = np.zeros((p, p))
+        else:
+            t = current / scale
+            self.weights_ = _huber_weights(t, self.c)
+            jacobian = optimize.approx_fprime(params, lambda b: self._evaluate(X, b))
+            psi = np.clip(t, -self.c, self.c)
+            factor = (
+                scale**2 * (psi @ psi / (n - p)) / max(np.mean(np.abs(t) <= self.c), 1 / n) ** 2
+            )
+            self.cov_params_ = factor * np.linalg.pinv(jacobian.T @ jacobian)
+        self.std_errors_ = np.sqrt(np.diag(self.cov_params_))
+        return self
+
+    def _evaluate(self, X, params):
+        values = np.asarray(self.model(X, *params), dtype=float)
+        if values.shape != (len(X),) or not np.isfinite(values).all():
+            raise ValueError(
+                "model must return one finite value per observation (shape (n_samples,))"
+            )
+        return values
+
+    def predict(self, X):
+        """Fitted values ``model(X, *params_)``."""
+        check_is_fitted(self)
+        X = validate_data(self, X, dtype=np.float64, reset=False)
+        return self._evaluate(X, self.params_)
+
+
+def _huber_weights(t, c):
+    return np.minimum(1, c / np.maximum(np.abs(t), 1e-300))
+
+
+def _coefficient_table(model, feature_names, statistic, values):
+    """Estimates, standard errors, ``statistic`` values and p-values, one row per coefficient."""
+    names = [f"x{j}" for j in range(model.n_features_in_)]
+    if feature_names is not None:
+        names = [str(name) for name in feature_names]
+        if len(names) != model.n_features_in_:
+            raise ValueError(f"expected {model.n_features_in_} feature names, got {len(names)}")
+    estimates = model.coef_
+    if model.fit_intercept:
+        names, estimates = ["(Intercept)", *names], np.r_[model.intercept_, model.coef_]
+    width = max(len(name) for name in names)
+    head = f"{statistic} value"
+    lines = [f"{'':{width}}  {'Estimate':>10}  {'Std. Error':>10}  {head:>8}  Pr(>|{statistic}|)"]
+    rows = zip(names, estimates, model.std_errors_, values, model.p_values_, strict=True)
+    for name, estimate, error, value, pvalue in rows:
+        lines.append(f"{name:{width}}  {estimate:10.4g}  {error:10.4g}  {value:8.3f}  {pvalue:.3g}")
+    return "\n".join(lines)
 
 
 def _design(X, fit_intercept):

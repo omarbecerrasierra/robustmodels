@@ -10,8 +10,9 @@ the bulk of the data along many one-dimensional projections, in
 | --- | --- | --- |
 | `StahelDonohoOutlyingness` | Roughly symmetric | Median and MAD of each projection; fast |
 | `AdjustedOutlyingness` | Skewed | Adjusted boxplot of each projection; finds outliers that skewness masks |
+| `DirectionalOutlyingness` | Skewed | Side-specific one-step robust scales; no medcouple required |
 
-Both need more observations than variables, are affine invariant, and make no
+All three need more observations than variables, are affine invariant, and make no
 assumption of elliptical shape. `covariance.MCD` with robust distances is an
 alternative for elliptical data.
 
@@ -107,6 +108,22 @@ Sources: [Stahel-Donoho outlyingness](references.md#s81),
 [adjusted outlyingness](references.md#hvdv08) and
 [the adjusted boxplot](references.md#hv08).
 
+## Directional outlyingness
+
+`DirectionalOutlyingness` uses a separate one-step robust scale above and
+below each projection median (Rousseeuw, Raymaekers and Hubert, 2018).
+It needs no medcouple and uses the same fitted depth, cutoff and prediction
+interface as the other detectors. Use it for skewed data where a single
+symmetric scale hides short-side outliers. `plots.outlyingness_plot` accepts
+all three detector classes.
+
+The half samples include the median for odd sample sizes, as in the paper,
+and the Gaussian calibration is evaluated analytically. mrfDepth 1.0.17
+excludes the odd median and rounds the calibration constant to 1.54, so its
+scores need not agree exactly. Tests integrate the scale expectation
+independently, check affine transformations and run scikit-learn's estimator
+checks. Zero side scales yield infinite outlyingness for nonzero deviations.
+
 ## Reference
 
 ```{eval-rst}
@@ -115,5 +132,7 @@ Sources: [Stahel-Donoho outlyingness](references.md#s81),
 .. autoclass:: StahelDonohoOutlyingness
    :members: fit, outlyingness, score_samples, decision_function, predict
 .. autoclass:: AdjustedOutlyingness
+   :members: fit, outlyingness, score_samples, decision_function, predict
+.. autoclass:: DirectionalOutlyingness
    :members: fit, outlyingness, score_samples, decision_function, predict
 ```
