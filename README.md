@@ -6,7 +6,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/robustmodels)](https://pypi.org/project/robustmodels/)
 [![CI](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml/badge.svg)](https://github.com/omarbecerrasierra/robustmodels/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/omarbecerrasierra/robustmodels/graph/badge.svg)](https://codecov.io/gh/omarbecerrasierra/robustmodels)
-[![Downloads](https://static.pepy.tech/badge/robustmodels)](https://pepy.tech/projects/robustmodels)
+[![Installs (pip/uv, no mirrors or bots)](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fsql-clickhouse.clickhouse.com%2F%3Fuser%3Ddemo%26query%3DSELECT%2520count%2528%2529%2520AS%2520n%2520FROM%2520pypi.pypi%2520WHERE%2520project%253D%2527robustmodels%2527%2520AND%2520installer%2520IN%2520%2528%2527pip%2527%252C%2527uv%2527%252C%2527poetry%2527%252C%2527pdm%2527%2529%2520AND%2520ci%2520%2521%253D%2520%2527true%2527%2520AND%2520arrayMap%2528x%2520-%253E%2520toUInt32OrZero%2528x%2529%252C%2520splitByChar%2528%2527.%2527%252C%2520python_minor%2529%2529%2520%253E%253D%2520%255B3%252C%252010%255D%2520FORMAT%2520JSONEachRow&query=%24.n&label=installs&color=blue&cacheSeconds=86400)](https://clickpy.clickhouse.com/dashboard/robustmodels)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD%203--Clause-blue)](https://github.com/omarbecerrasierra/robustmodels/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24169655.svg)](https://doi.org/10.5281/zenodo.24169655)
 
