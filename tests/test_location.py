@@ -118,3 +118,12 @@ def test_nan_trimming_proportion_is_rejected():
 def test_m_location_warns_instead_of_silently_accepting_nonconvergence():
     with pytest.warns(RuntimeWarning, match="did not converge"):
         m_location([1.0, 2.0, 2.0, 3.0, 4.0, 100.0], max_iter=1)
+
+
+def test_hodges_lehmann_finite_walsh_averages_near_float_limit():
+    # Exact Walsh-average medians; neither the individual pair means nor
+    # averaging the two central means may overflow when the answer is finite.
+    assert hodges_lehmann([1e308, 1.1e308, 1.2e308]) == pytest.approx(1.1e308)
+    assert hodges_lehmann([1e308] * 4) == 1e308
+    tiny = np.nextafter(0.0, 1.0)
+    assert hodges_lehmann([tiny] * 3) == tiny

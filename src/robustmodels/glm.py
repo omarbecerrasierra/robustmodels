@@ -363,21 +363,26 @@ class MTPoissonRegressor(_PoissonMixin, _RobustGLM):
     estimator is an M-estimator on that scale: it minimizes
     ``sum(w(x_i) rho(sqrt(y_i) - m(mu_i)))`` with ``rho`` Tukey's bisquare and
     ``m(mu)`` the value that minimizes ``E[rho(sqrt(Y) - m)]`` for ``Y``
-    Poisson with mean ``mu``, which makes it Fisher consistent. Because ``rho``
+    Poisson with mean ``mu``. This defining correction is Fisher consistent;
+    its implementation here uses a numerical spline approximation. Because ``rho``
     is bounded, gross outliers get weight 0. The search starts from subsamples:
     each gives a fit, the half of the data with the smallest deviances is refit
     by maximum likelihood, and the candidate with the smallest criterion is
     improved with BFGS, as R's ``glmrob(method = "MT")``. ``m`` is a cubic
-    Hermite spline with exact derivatives on the grid of robustbase, extended
+    Hermite spline with implicit derivatives at its nodes, extended
     beyond a mean of 100 by ``sqrt(mu) + a / sqrt(mu)`` (robustbase switches to
     ``sqrt(mu)`` there, with a small jump). The search does not certify a
     global minimum.
 
     Parameters
     ----------
-    c : float, default 2.1
+    c : float, greater than 1, default 2.1
         Bisquare tuning constant on the square-root scale, where the standard
-        deviation is about 1/2.
+        deviation is about 1/2. Values at most 1 are excluded: the expected
+        loss then has a flat location at zero for sufficiently small means,
+        violating the increasing-transformation requirement. This necessary
+        bound alone does not establish uniqueness or the other asymptotic
+        regularity assumptions for every larger tuning constant.
     x_weights : {"none", "hat", "mcd"}, default "none"
         Weights on the regressors, as in :class:`MallowsPoissonRegressor`.
     fit_intercept : bool, default True
@@ -396,7 +401,10 @@ class MTPoissonRegressor(_PoissonMixin, _RobustGLM):
     intercept_ : float
         Intercept; 0 without ``fit_intercept``.
     cov_params_ : ndarray of shape (p, p)
-        Asymptotic (sandwich) covariance matrix of ``[intercept_, *coef_]``.
+        Empirical score/Jacobian sandwich covariance of ``[intercept_, *coef_]``.
+        Asymptotic inference requires a locally identified regular solution.
+        At the numerical predictor cap the covariance is unavailable (NaNs)
+        and the fit is reported as non-converged.
     std_errors_, z_values_, p_values_ : ndarray of shape (p,)
         Standard errors, z statistics and two-sided normal p-values.
     weights_ : ndarray of shape (n_samples,)
@@ -460,7 +468,8 @@ class MTPoissonRegressor(_PoissonMixin, _RobustGLM):
         )
         self.n_iter_ = fit.nit
         self.converged_ = bool(
-            fit.success or np.linalg.norm(problem.gradient(fit.x), ord=np.inf) <= 1e-8 * len(y)
+            (fit.success or np.linalg.norm(problem.gradient(fit.x), ord=np.inf) <= 1e-8 * len(y))
+            and not problem.is_clipped(fit.x)
         )
         if not self.converged_:
             warnings.warn("the MT estimator did not converge", RuntimeWarning, 2)
@@ -635,7 +644,7 @@ def _bianco_yohai(design, y, c, max_iter):
 
 
 class _MTMean:
-    """``m(mu)``: the minimizer of ``E[rho(sqrt(Y) - m)]`` for ``Y`` Poisson with mean ``mu``.
+    """Approximate minimizer of ``E[rho(sqrt(Y) - m)]`` for ``Y`` Poisson with mean ``mu``.
 
     Computed on a grid up to 100 with its derivative (by implicit
     differentiation of ``E[psi(sqrt(Y) - m)] = 0``) and interpolated; beyond
@@ -643,6 +652,7 @@ class _MTMean:
     """
 
     def __init__(self, c):
+        check_range("c", c, 1, np.inf, low_open=True, high_open=True)
         grid = np.r_[np.arange(30) / 10, np.arange(3.0, 101.0)]
         values = np.array([self._solve(mu, c) for mu in grid])
         self.spline = CubicHermiteSpline(grid, *values.T)
@@ -659,7 +669,16 @@ class _MTMean:
             # rather than assuming that a single bounded search is unimodal.
             grid = np.sort(np.r_[roots, (roots[:-1] + roots[1:]) / 2])
             losses = _rho(roots[:, None] - grid, c).T @ mass
-            candidates = [(float(losses[0]), 0.0)]
+            # The boundary-adjacent cell can contain a minimum even when
+            # its endpoint has lower loss than the next coarse-grid value.
+            # Omitting it biases small-mean fits toward zero.
+            boundary = optimize.minimize_scalar(
+                lambda m: mass @ _rho(roots - m, c),
+                bounds=(0, grid[1]),
+                method="bounded",
+                options={"xatol": 1e-12},
+            )
+            candidates = [(float(losses[0]), 0.0), (float(boundary.fun), float(boundary.x))]
             minima = np.flatnonzero((losses[1:-1] < losses[:-2]) & (losses[1:-1] <= losses[2:])) + 1
             for i in minima:
                 fit = optimize.minimize_scalar(
@@ -707,7 +726,12 @@ class _MTProblem:
         """``psi``, ``psi'`` (of the normalized rho), ``mu``, ``m'`` and ``m''``."""
         mu = _poisson_mean(self.design @ coef)
         _, dpsi, psi = _bisquare(self.root - self.m(mu), self.c)
-        return psi, 6 * dpsi / self.c**2, mu, self.m(mu, 1), self.m(mu, 2)
+        active = np.abs(self.design @ coef) < _MAX_ETA
+        return psi, 6 * dpsi / self.c**2, mu, self.m(mu, 1) * active, self.m(mu, 2) * active
+
+    def is_clipped(self, coef):
+        """Whether a numerical bound is active, making ordinary coefficient inference invalid."""
+        return bool(np.any(np.abs(self.design @ coef) >= _MAX_ETA))
 
     def gradient(self, coef):
         psi, _, mu, slope, _ = self._terms(coef)
@@ -733,6 +757,9 @@ class _MTProblem:
         return best
 
     def covariance(self, coef):
+        if self.is_clipped(coef):
+            p = self.design.shape[1]
+            return np.full((p, p), np.nan)
         psi, dpsi, mu, slope, curvature = self._terms(coef)
         n = len(mu)
         score = self.w * psi * slope * mu

@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scipy import stats
+from sklearn import __version__ as sklearn_version
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
@@ -43,10 +44,17 @@ def close(a, b, tol):
 
 
 def expected_failures(estimator):
+    failures = {}
     if isinstance(estimator, RobustQDA):
-        # This check fits iris, where more than half of the setosa petal widths are tied.
-        return {"check_positive_only_tag_during_fit": "exact fit: a class of iris is singular"}
-    return {}
+        failures["check_positive_only_tag_during_fit"] = "exact fit: a class of iris is singular"
+    if isinstance(estimator, (RobustLDA, RobustQDA)) and tuple(
+        map(int, sklearn_version.split(".")[:2])
+    ) < (1, 7):
+        # sklearn 1.6 constructs classes with n_class <= p in these checks.
+        # A full-rank per-class scatter is mathematically unavailable there.
+        reason = "the legacy check data violate the required n_class > p"
+        failures.update({"check_n_features_in_after_fitting": reason, "check_dtype_object": reason})
+    return failures
 
 
 @parametrize_with_checks(
@@ -72,18 +80,22 @@ def plane_with_outliers(n=100, p=20, outliers=10):
 
 @pytest.mark.parametrize("name", PCA)
 @pytest.mark.parametrize("key, k", [("k0", None), ("k2", 2)])
-def test_robpca_matches_rrcov(name, key, k):
-    r = PCA[name][key]
+def test_robpca_geometry_on_frozen_samples(name, key, k):
+    # The stored samples are test inputs, not a mathematical oracle. ROBPCA
+    # now uses the paper's h convention rather than rrcov's interpolated one.
     X = np.array(PCA[name]["X"])
     fit = ROBPCA(k, random_state=0).fit(X)
-    assert fit.n_components_ == r["k"]
-    loadings = np.reshape(r["loadings"], (X.shape[1], -1)).T
-    signs = np.sign(np.sum(loadings * fit.components_, axis=1))  # rrcov does not fix the signs
-    assert close(fit.components_, loadings * signs[:, None], 1e-9)
-    assert close(fit.location_, r["center"], 1e-10)
-    assert close(fit.explained_variance_, r["eigenvalues"], 1e-10)
-    assert close(fit.score_distances_, r["sd"], 1e-9)
-    assert np.abs(fit.orthogonal_distances_ - r["od"]).max() <= 1e-9 * np.abs(X).max()
+    np.testing.assert_allclose(
+        fit.components_ @ fit.components_.T, np.eye(fit.n_components_), atol=1e-12
+    )
+    assert np.all(fit.explained_variance_ > 0)
+    assert np.all(np.diff(fit.explained_variance_) <= 0)
+    reconstruction = fit.inverse_transform(fit.transform(X))
+    residuals = X - reconstruction
+    np.testing.assert_allclose(residuals @ fit.components_.T, 0, atol=1e-10)
+    np.testing.assert_allclose(
+        np.linalg.norm(residuals, axis=1), fit.orthogonal_distances_, atol=1e-10
+    )
 
 
 def test_robpca_recovers_the_subspace_and_flags_the_outliers():
@@ -159,10 +171,12 @@ def test_univariate_mcd_of_robpca():
     assert _unimcd(np.r_[np.zeros(8), 1.0, 2.0], 8) == (0.0, 0.0)
 
 
-def test_pair_outlyingness_skips_directions_without_spread():
+def test_pair_outlyingness_keeps_exact_fit_outliers_visible():
     Z = np.zeros((10, 2))
     Z[8:] = [[1.0, 0.0], [0.0, 1.0]]  # eight tied points: every projection has zero scale
-    np.testing.assert_array_equal(_pair_outlyingness(Z, 8, 250, None), np.zeros(10))
+    scores = _pair_outlyingness(Z, 8, 250, None)
+    np.testing.assert_array_equal(scores[:8], 0)
+    assert np.isinf(scores[8:]).all()
 
 
 def test_projection_pursuit_with_the_standard_deviation_is_classical_pca():
@@ -413,3 +427,106 @@ def test_singular_covariances_raise_a_clear_error():
         RobustQDA(random_state=0).fit(flat, y)
     with pytest.raises(ValueError, match="MCD covariance is singular"):
         hotelling_t2(flat, random_state=0)
+
+
+@pytest.mark.parametrize("n, p, alpha", [(60, 10, 0.75), (30, 6, 0.5), (30, 6, 1.0)])
+def test_robpca_uses_one_paper_defined_subset_size(n, p, alpha, monkeypatch):
+    from robustmodels import multivariate
+
+    fitted_sizes = []
+
+    class RecordedMCD(MCD):
+        def fit(self, X, y=None):
+            result = super().fit(X, y)
+            fitted_sizes.append(self.raw_support_.sum())
+            return result
+
+    monkeypatch.setattr(multivariate, "MCD", RecordedMCD)
+    X = np.random.default_rng(50).normal(size=(n, p))
+    fit = ROBPCA(p, alpha=alpha, max_components=p, random_state=0).fit(X)
+    expected = max(int(alpha * n), (n + p + 1) // 2)
+    assert fit.h_ == expected
+    assert fitted_sizes == [expected]
+
+
+@pytest.mark.parametrize("n", [2, 3, 4])
+def test_hotelling_rejects_undefined_finite_moment_calibration(n):
+    with pytest.raises(ValueError, match="finite-moment F calibration"):
+        hotelling_t2(np.arange(float(n))[:, None])
+
+
+@pytest.mark.filterwarnings("ignore:exact fit")
+def test_manova_rejects_singular_samples_instead_of_returning_nan():
+    x = np.random.default_rng(51).normal(size=20)
+    X = np.c_[x, x]
+    with pytest.raises(ValueError, match="pooled covariance is singular"):
+        manova(X, np.repeat([0, 1], 10), n_simulations=2, random_state=0)
+
+
+@pytest.mark.parametrize("missing", [0, 1])
+def test_wilks_requires_every_original_group_after_trimming(missing, monkeypatch):
+    from types import SimpleNamespace
+
+    from robustmodels import multivariate
+
+    X = np.random.default_rng(52).normal(size=(10, 2))
+    labels = np.repeat([0, 1], 5)
+    pooled = SimpleNamespace(covariance_=np.eye(2), dist_=np.where(labels == missing, 100.0, 0.0))
+    monkeypatch.setattr(multivariate, "_pooled_mcd", lambda *args: (None, pooled))
+    with pytest.raises(ValueError, match="no observations left"):
+        _wilks(X, labels, None)
+
+
+def test_wilks_rejects_singular_weighted_within_scatter(monkeypatch):
+    from types import SimpleNamespace
+
+    from robustmodels import multivariate
+
+    X = np.array([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [3.0, 3.0], [4.0, 3.0], [3.0, 4.0]])
+    labels = np.repeat([0, 1], 3)
+    pooled = SimpleNamespace(covariance_=np.eye(2), dist_=np.array([0.0, 100, 100, 0, 100, 100]))
+    monkeypatch.setattr(multivariate, "_pooled_mcd", lambda *args: (None, pooled))
+    with pytest.raises(ValueError, match="within-group or total scatter is singular"):
+        _wilks(X, labels, None)
+
+
+@pytest.mark.filterwarnings("ignore:exact fit")
+@pytest.mark.parametrize("p", [2, 5, 8])
+def test_robpca_rejects_point_mass_instead_of_reporting_roundoff_variance(p):
+    X = np.random.default_rng(53).normal(size=(30, p))
+    X[:24] = 0.1
+    with pytest.raises(ValueError, match="zero robust variance|no positive variance"):
+        ROBPCA(1, random_state=0).fit(X)
+
+
+@pytest.mark.filterwarnings("ignore:exact fit")
+def test_robpca_detects_zero_variance_after_subspace_selection():
+    X = np.random.default_rng(54).normal(size=(30, 8))
+    X[:22] = 0.1
+    with pytest.raises(ValueError, match="least outlying observations have zero robust variance"):
+        ROBPCA(1, random_state=0).fit(X)
+
+
+@pytest.mark.filterwarnings("ignore:exact fit")
+def test_robpca_rejects_variance_lost_to_underflow():
+    X = 1e-200 * np.random.default_rng(55).normal(size=(20, 3))
+    with pytest.raises(ValueError, match="no positive variance"):
+        ROBPCA(1, random_state=0).fit(X)
+
+
+def test_robpca_low_coverage_reduces_dimension_before_the_final_mcd():
+    X = np.random.default_rng(56).normal(size=(20, 4))
+    fit = ROBPCA(2, alpha=0.5, random_state=0).fit(X)
+    assert fit.h_ == 11  # paper h for k_max=2; a full 4-D MCD would require 12
+    assert fit.components_.shape == (2, 4)
+    assert np.isfinite(fit.score_distances_).all()
+
+
+@pytest.mark.parametrize("rule", [RobustLDA, RobustQDA])
+def test_classifier_object_inputs_and_feature_counts_on_valid_class_samples(rule):
+    X, y = two_classes()
+    numeric = rule(random_state=0).fit(X, y)
+    objects = rule(random_state=0).fit(X.astype(object), y)
+    np.testing.assert_array_equal(numeric.predict(X), objects.predict(X.astype(object)))
+    with pytest.raises(ValueError, match="features"):
+        objects.predict(np.ones((3, X.shape[1] + 1)))

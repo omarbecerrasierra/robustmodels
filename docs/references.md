@@ -7,11 +7,11 @@ certify this implementation. The method pages explain numerical conventions and 
 
 ## Method-to-source map
 
-| Public method | Scientific source | Implemented convention / R comparison |
+| Public method | Scientific source | Implemented convention and limitations |
 | --- | --- | --- |
 | `location.hodges_lehmann` | [HL63](#hl63) | Median of Walsh averages, including diagonal pairs; direct definition in R |
 | `location.trimmed_mean`, `location.winsorized_mean` | [TM63](#tm63) | `floor(n * proportion)` observations per tail; R mean / explicit clipping |
-| `location.m_location` | [H64](#h64), [BT74](#bt74) | Fixed scale, median start; Huber compared with `robustbase::huberM(k=1.5)`; bisquare checked by its score equation |
+| `location.m_location` | [H64](#h64), [BT74](#bt74) | Fixed scale, median start; Huber and bisquare checked by their score equations |
 | `location.tau_location`, `scale.tau_scale` | [MZ02](#mz02), [YZ88](#yz88) | One-step tau form used by OGK, not a general tau regression estimator; `scaleTau2(iter=1)` |
 | `scale.mad` | [H74](#h74), [CR92](#cr92) | Median center by default; exact normal quantile; finite correction optional; R `mad` uses rounded 1.4826 |
 | `scale.qn`, `scale.sn` | [RC93](#rc93), [CR92](#cr92) | Qn order statistic and Sn low/high medians; finite corrections on by default; compare raw and corrected values separately |
@@ -25,16 +25,16 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.mcd_small_sample` | [PVAW02](#pvaw02) | Empirical fitted finite-sample factors; not exact unbiasedness |
 | `covariance.MRCD` | [BRVV20](#brvv20) | Identity target in robustly standardized coordinates; common rho from algorithm step 3.4; `CovMrcd` |
 | `covariance.MVE` | [R85](#r85), [VAR09](#var09) | Random elemental ellipsoids and local refits; approximate search, not a certified global MVE; `CovMve` is diagnostic only |
-| `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw estimates also compared |
+| `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw and reweighted scatter are exposed separately |
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
-| `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
+| `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` with empirical small-sample factors |
 | `outliers.StahelDonohoOutlyingness` | [S81](#s81), [D82](#d82), [Z03](#z03) | Directions normal to hyperplanes through `p` points (all when few, else random), consistent MAD, log cutoff as mrfDepth; `outlyingness`, `projdepth` |
 | `outliers.AdjustedOutlyingness` | [HVdV08](#hvdv08), [HV08](#hv08) | Adjusted boxplot whiskers with type-5 quartiles and the medcouple by definition; ties from rounding merged; log cutoff as mrfDepth; `adjOutl`, `sprojdepth` |
 | `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
 | `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06), [CDH03](#cdh03) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); covariance as `lmrob`'s `.vcov.avar1`, with the S breakdown in the scale term (`lmrob` fixes 1/2); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
 | `covariance.StahelDonoho` | [S81](#s81), [D82](#d82), [MY95](#my95) | Huber-type weights `min(1, c^2 / r^2)` with `c^2` the 0.95 chi-square quantile; covariance scaled by the median distance; `CovSde` uses another weight function |
-| `multivariate.ROBPCA` | [HRVB05](#hrvb05) | Pair directions with the reweighted univariate MCD; direct MCD when the rank is small; orthogonal cutoff by univariate MCD (`PcaHubert`: median and MAD) |
+| `multivariate.ROBPCA` | [HRVB05](#hrvb05) | Published h retained throughout; pair directions and univariate MCD; generic corrected final MCD is a computational variant; orthogonal cutoff by univariate MCD |
 | `multivariate.ProjectionPursuitPCA` | [LC85](#lc85), [CFO07](#cfo07) | Grid algorithm centered at the spatial median; MAD by default; `PCAgrid` |
 | `multivariate.RobustLDA`, `multivariate.RobustQDA` | [HVD04](#hvd04), [HF00](#hf00) | Pooled-observations MCD for the common covariance, one MCD per class for QDA; priors are class proportions; `Linda(method = "mcd")`, `QdaCov` |
 | `multivariate.hotelling_t2` | [WPRA02](#wpra02), [CH99](#ch99) | One sample; reweighted MCD with coverage 0.75 and the authors' fitted `d` and `q`; `T2.test(method = "mcd")` |
@@ -49,7 +49,7 @@ certify this implementation. The method pages explain numerical conventions and 
 | `plots.outlyingness_plot` | [S81](#s81), [HVdV08](#hvdv08) | The fitted detector's scores and cutoff; separate display positions for infinite scores |
 | `glm.MallowsLogisticRegression`, `glm.MallowsPoissonRegressor` | [CR01](#cr01) | Fisher-corrected Huber quasi-score; covariance and hat-weight conventions differ from robustbase |
 | `glm.BYLogisticRegression` | [BY96](#by96), [CH03](#ch03) | Corrected deviance; optional leverage trimming throughout fitting, rather than only at the start |
-| `glm.MTPoissonRegressor` | [VY14](#vy14) | Bisquare on transformed counts; spline transformation with a continuous tail above mean 100 |
+| `glm.MTPoissonRegressor` | [VY14](#vy14) | MT-style bisquare criterion with approximate spline transformation; source-theorem regularity is conditional; numerical-cap inference unavailable |
 | `regression.NonlinearMRegressor` | [H81](#h81) | Huber IRWLS, median absolute final residual scale; asymptotic Jacobian covariance differs from `nlrob` |
 | `outliers.DirectionalOutlyingness` | [RRH18](#rrh18) | Side-specific scales; includes the odd median and uses unrounded Gaussian calibration |
 | `depth.halfspace_depth` | [T75](#t75), [RR96](#rr96) | Exact in one and two dimensions; sampled-hyperplane upper approximation above two |
@@ -451,5 +451,7 @@ Package manuals and source identify the software conventions:
 [pcaPP](https://cran.r-project.org/package=pcaPP).
 The frozen JSON fixtures in `tests/data` record the versions that produced
 the reference values for the univariate, multivariate, GLM, nonlinear and
-depth comparisons. Agreement with these fixtures is limited
-to their data and settings, and does not imply universal agreement with R.
+depth comparisons. These fixtures retain their software provenance as
+supplementary regression checks. Mathematical definitions, assumptions and
+independent calculations determine acceptance; reproducing an external
+number is not a correctness requirement.

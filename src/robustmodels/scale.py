@@ -736,7 +736,14 @@ def _pairwise_quantile(x, probability, diagonal=False):
     first, last = _pairwise_rows(x.size, diagonal)
     count = int(np.sum(last - first + 1))
     rank = int(np.ceil(probability * count))
-    return _kth_smallest(lambda i, j: (x[i] + x[j]) / 2, first, last, rank)
+    return _kth_smallest(lambda i, j: _safe_average(x[i], x[j]), first, last, rank)
+
+
+def _safe_average(a, b):
+    """Average finite values without overflowing their sum; preserve ordinary rounding."""
+    with np.errstate(over="ignore"):
+        total = np.asarray(a) + np.asarray(b)
+    return np.where(np.isfinite(total), total / 2, np.asarray(a) / 2 + np.asarray(b) / 2)
 
 
 def _matrix_median(value, first, last):
@@ -747,7 +754,7 @@ def _matrix_median(value, first, last):
     if count % 2:
         return lower
     upper = _kth_smallest(value, first, last, rank + 1)
-    return float((lower + upper) / 2)
+    return float(_safe_average(lower, upper))
 
 
 def _kth_smallest(value, lo, hi, k):

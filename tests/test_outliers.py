@@ -217,3 +217,13 @@ def test_directional_even_r_scores_after_calibration_conversion():
     expected = np.ravel(r["outlyingness"]) * 1.54 * 2 * np.sqrt(_DO_ALPHA)
     # R also rounds its initial MAD constant to 1.4826.
     np.testing.assert_allclose(fit.outlyingness_, expected, atol=1e-10, rtol=1e-6)
+
+
+def test_directional_scales_calibrated_on_deterministic_normal_quantiles():
+    # Model quantiles integrate the entire symmetric normal law without using
+    # the fitted scale formula as an oracle or relying on Monte Carlo seeds.
+    n = 4000
+    x = stats.norm.ppf((np.arange(n) + 0.5) / n)
+    fit = DirectionalOutlyingness().fit(x[:, None])
+    np.testing.assert_allclose(fit.lower_scales_, [1.0], atol=2e-6)
+    np.testing.assert_allclose(fit.upper_scales_, [1.0], atol=2e-6)

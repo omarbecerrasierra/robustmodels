@@ -47,7 +47,7 @@ python -m pip install robustmodels
 ```
 
 Requires **Python 3.10+**. NumPy, SciPy, scikit-learn and Matplotlib are installed as dependencies.
-CI tests Python 3.10–3.14 on Linux, Windows and macOS.
+CI tests Python 3.10–3.15 on Linux, Windows and macOS.
 
 ## Start with one sample
 
@@ -161,7 +161,7 @@ Outliers used: 0
 ```
 
 The true line is `1 + 2x`; least squares gives an intercept of 4.04 and a slope
-of 1.17. `MMRegressor`, the default of R's `lmrob`, combines a 50% breakdown
+of 1.17. `MMRegressor` combines a 50% breakdown
 point with 95% efficiency under normal errors, and reports standard errors and
 p-values with `summary()`. See the
 [regression guide](https://omarbecerrasierra.github.io/robustmodels/regression.html)
@@ -300,8 +300,12 @@ Coming from R? The [R equivalents](https://omarbecerrasierra.github.io/robustmod
 page maps robustbase, rrcov and base R functions to robustmodels. The
 [method references](https://omarbecerrasierra.github.io/robustmodels/references.html)
 connect the implementations to their scientific sources and explain differences
-from R conventions. Tests cover statistical properties, edge cases, reference
-comparisons with R's robustbase and rrcov, and scikit-learn compatibility.
+from other software conventions. Tests check defining equations, exact small
+problems, statistical properties, numerical derivatives, edge cases and
+scikit-learn compatibility. Frozen software outputs retain their provenance
+as supplementary regression checks; they are not correctness criteria. See
+the [validation notes](https://omarbecerrasierra.github.io/robustmodels/validation.html)
+for the independent theoretical audit and its limits.
 
 ## Documentation, contributions and citation
 

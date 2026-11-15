@@ -116,3 +116,13 @@ def test_inner_optimizer_failure_is_reported(monkeypatch):
     X = np.arange(10.0)[:, None]
     with pytest.raises(RuntimeError, match="nonlinear least squares failed: evaluation budget"):
         NonlinearMRegressor(decay, [1, 1]).fit(X, np.ones(10))
+
+
+def test_nonidentifiable_parameters_do_not_get_pseudoinverse_standard_errors():
+    def redundant(X, a, b):
+        return np.full(len(X), a + b)
+
+    X = np.arange(10.0)[:, None]
+    y = np.array([-1.0, 1.0] * 5)
+    with pytest.raises(ValueError, match="Jacobian.*not locally identifiable"):
+        NonlinearMRegressor(redundant, [0.0, 0.0]).fit(X, y)

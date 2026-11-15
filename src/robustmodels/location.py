@@ -9,7 +9,14 @@ import warnings
 import numpy as np
 
 from ._validation import as_1d, check_count, check_option, check_range
-from .scale import _bisquare_weights, _matrix_median, _pairwise_rows, _tau_estimates, mad
+from .scale import (
+    _bisquare_weights,
+    _matrix_median,
+    _pairwise_rows,
+    _safe_average,
+    _tau_estimates,
+    mad,
+)
 
 __all__ = ["hodges_lehmann", "m_location", "tau_location", "trimmed_mean", "winsorized_mean"]
 
@@ -46,7 +53,7 @@ def hodges_lehmann(x):
     if x.size == 0:
         return np.nan
     first, last = _pairwise_rows(x.size, diagonal=True)
-    return _matrix_median(lambda i, j: (x[i] + x[j]) / 2, first, last)
+    return _matrix_median(lambda i, j: _safe_average(x[i], x[j]), first, last)
 
 
 def trimmed_mean(x, proportion=0.1):

@@ -15,7 +15,6 @@ from .outliers import _directions, _merge_ties
 
 __all__ = ["bagplot_stats", "halfspace_depth", "halfspace_median", "regression_depth"]
 
-_ANGLE_TOL = 1e-12  # angles closer than this are the same direction
 _TIE_TOL = 1e-10  # projections closer than this (relative to their range) are tied
 
 
@@ -73,6 +72,11 @@ def halfspace_depth(X, points=None, *, n_directions=None, random_state=None):
         raise ValueError(f"points has {points.shape[1]} features, X has {p}")
     if n_directions is not None:
         check_count("n_directions", n_directions)
+    if p == 1:
+        ordered = np.sort(X[:, 0])
+        below = np.searchsorted(ordered, points[:, 0], "right")
+        above = n - np.searchsorted(ordered, points[:, 0], "left")
+        return np.minimum(below, above) / n
     if p == 2:
         return np.array([_depth_2d(z, X) for z in points]) / n
     n_directions = 250 * p if n_directions is None else n_directions
@@ -84,14 +88,23 @@ def _depth_2d(z, X):
     """Number of observations in the least populated closed halfplane through ``z``."""
     differences = X - z
     away = differences.any(axis=1)
-    angles = np.sort(np.arctan2(differences[away, 1], differences[away, 0]))
-    if not angles.size:
+    if not np.any(away):
         return len(X)
-    # A halfplane in general position is the arc (start, start + pi] that starts
-    # just after an observation or just after the opposite of one.
-    circle = np.concatenate([angles - 2 * np.pi, angles, angles + 2 * np.pi])
-    starts = np.concatenate([angles, angles - np.pi]) + _ANGLE_TOL
-    inside = np.searchsorted(circle, starts + np.pi, "right") - np.searchsorted(
+    offsets = differences[away].astype(np.longdouble)
+    # Diagonal rescaling preserves halfspace membership and makes very narrow
+    # clouds numerically distinguishable before computing their angles.
+    span = np.max(np.abs(offsets), axis=0)
+    offsets = offsets / np.where(span > 0, span, 1)
+    pi = np.arccos(np.longdouble(-1))
+    angles = np.sort(np.arctan2(offsets[:, 1], offsets[:, 0]) % (2 * pi))
+    # Every open angular cell between a data ray and an opposite data ray
+    # has constant halfplane membership. A fixed epsilon could jump over a
+    # narrow cell and miss its smaller count; use each cell's midpoint.
+    critical = np.unique(np.r_[angles, (angles + pi) % (2 * pi)])
+    gaps = np.diff(np.r_[critical, critical[0] + 2 * pi])
+    starts = critical + gaps / 2
+    circle = np.concatenate([angles - 2 * pi, angles, angles + 2 * pi])
+    inside = np.searchsorted(circle, starts + pi, "right") - np.searchsorted(
         circle, starts, "right"
     )
     return len(X) - int(away.sum()) + int(inside.min())
@@ -376,12 +389,12 @@ class _Regions:
         k = int(np.argmax(held <= n // 2))  # held[k] <= n // 2 < held[k - 1]
         outer, inner = self.polygon(k - 1), self.polygon(k)
         angles = np.linspace(0, 2 * np.pi, 720, endpoint=False)
-        if inner is not None and len(inner) > 2:
+        if inner is not None:
             angles = np.r_[angles, _angles(inner, center)]
         angles = np.unique(np.r_[angles, _angles(outer, center)])
         share = (n / 2 - held[k]) / (held[k - 1] - held[k])
         radius = share * _radius(outer, center, angles)
-        if inner is not None and len(inner) > 2:
+        if inner is not None:
             radius += (1 - share) * _radius(inner, center, angles)
         rays = np.c_[np.cos(angles), np.sin(angles)]
         return self._restore(center + radius[:, None] * rays)

@@ -31,7 +31,7 @@ def groups(ax):
     return {
         artist.get_label(): np.asarray(artist.get_offsets())
         for artist in ax.collections
-        if isinstance(artist, PathCollection)
+        if isinstance(artist, PathCollection) and not artist.get_label().startswith("_")
     }
 
 

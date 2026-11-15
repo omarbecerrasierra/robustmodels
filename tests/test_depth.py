@@ -183,3 +183,52 @@ def test_singular_selected_subset_has_actionable_error():
     X = np.vstack([np.zeros((18, 2)), [1, 0], [0, 1]])
     with pytest.raises(ValueError, match="selected subset.*increase max_samples"):
         halfspace_median(X, max_samples=3, random_state=0)
+
+
+def test_univariate_closed_halfspaces_do_not_merge_distinct_query_points():
+    X = np.array([[0.0], [1.0]])
+    points = np.array([[-1e-12], [0.0], [1.0], [1.0 + 1e-12]])
+    np.testing.assert_array_equal(halfspace_depth(X, points), [0, 0.5, 0.5, 0])
+
+
+def test_bag_interpolates_a_nonzero_inner_segment():
+    from robustmodels.depth import _radius, _Regions
+
+    # The depth-2 region is [(1, 1), (2, 2)], with two data points;
+    # the depth-1 region has all five. The ray to (3, 3) therefore has
+    # interpolation coefficient (2.5 - 2)/(5 - 2) = 1/6 on the outer region.
+    X = np.array([[1.0, 1], [1, 1], [1, 2], [3, 2], [3, 3]])
+    regions = _Regions(X, 200, None)
+    center = regions.median()
+    stats = bagplot_stats(X)
+    # Along the diagonal the bag boundary is 1/6*(3,3) + 5/6*(2,2).
+    target = np.array([13 / 6, 13 / 6])
+    angle = np.arctan2(*(target - center)[::-1])
+    radial = _radius(stats.bag, center, [angle])[0]
+    np.testing.assert_allclose(
+        center + radial * np.array([np.cos(angle), np.sin(angle)]), target, atol=1e-8
+    )
+
+
+def test_narrow_bivariate_halfplanes_against_exact_rational_signs():
+    from fractions import Fraction
+
+    X = np.array([[1.0, 0], [1, 2e-14], [-1, 0], [0, -2e-14], [0, 1e-14], [1, 2e-14], [-1, 2e-14]])
+    vectors = [[Fraction(float(v)) for v in row] for row in X]
+    best = len(X)
+    # Enumerate infinitesimal rotations of the normal to each observation.
+    # Exact rational signs determine the count on each open angular cell;
+    # this calculation uses neither arctan2 nor a numerical perturbation.
+    for x, y in vectors:
+        for sign in [-1, 1]:
+            for side in [-1, 1]:
+                count = 0
+                for a, b in vectors:
+                    leading = sign * (x * b - y * a)
+                    perturbation = side * (x * a + y * b)
+                    count += leading > 0 or (leading == 0 and perturbation >= 0)
+                best = min(best, count)
+    assert best == 2
+    assert halfspace_depth(X, [[0.0, 0.0]])[0] == best / len(X)
+    # Halfspace depth is invariant under nonsingular coordinate scaling.
+    assert halfspace_depth(X * [1, 1e14], [[0.0, 0.0]])[0] == best / len(X)

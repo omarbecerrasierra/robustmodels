@@ -7,7 +7,7 @@ Robust linear and nonlinear regression estimators, in
 
 | Class | Needs | Random | Notes |
 | --- | --- | --- | --- |
-| `MMRegressor` | `n > p` | Yes | The default choice: 50% breakdown and 95% Gaussian efficiency, as R's `lmrob` |
+| `MMRegressor` | `n > p` | Yes | The default choice: 50% breakdown and 95% Gaussian efficiency under normal errors |
 | `LTSRegressor` | `n > p` | Yes | Least trimmed squares, then reweighted least squares; marks the observations it uses |
 | `SRegressor` | `n > p` | Yes | Minimizes a robust residual scale; 50% breakdown but only 29% efficiency |
 
@@ -131,9 +131,9 @@ not a regularization strength.
 ## Numerical limits and sources
 
 FAST-LTS takes two concentration steps from each random elemental start, then
-iterates the ten best to convergence. It does not certify a global optimum;
-on the classical datasets in the tests it matches robustbase's exhaustive
-search. The intercept is a column of ones, without the intercept adjustment
+iterates the ten best to convergence. Exhaustive small problems check the
+trimmed objective independently; the finite random search does not certify a
+global optimum. The intercept is a column of ones, without the intercept adjustment
 step of Rousseeuw & Van Driessen (2006), as in `ltsReg`'s default.
 
 For data in general position the raw estimator has breakdown point close to
@@ -146,13 +146,12 @@ example above), as in `ltsReg`.
 
 FAST-S refines every random start a few steps and the five best to
 convergence; refinement stops when the coefficients change by less than `1e-7`
-relative, as in `lmrob`. On hbk it finds a smaller S scale than `lmrob`'s
-default search, which refines two candidates. The S scale divides by `n - p`,
+relative. The number of starts and refined candidates affects the local
+solution selected. The S scale divides by `n - p`,
 as `lmrob`, to reduce small-sample bias, and is consistent at the normal model;
 like the LTS scale, it overestimates the error standard deviation when outliers
-are present. The bisquare constants are computed exactly (1.5476 for 50%
-breakdown, 4.6851 for 95% efficiency); `lmrob` rounds them, so scales differ by
-about `3e-6`.
+are present. The bisquare constants are computed from their defining normal expectations
+(about 1.5476 for 50% breakdown and 4.6851 for 95% efficiency).
 
 The MM-estimator keeps the S scale fixed and converges to a local minimum of
 its loss near the S fit. Its breakdown point is that of the S-estimator, and
@@ -188,12 +187,13 @@ convergence, and iteration exhaustion emits a `RuntimeWarning`.
 
 ```
 
-The scale is the median absolute final residual divided by 0.6745, as in
-robustbase's `nlrob`. Coefficients, scale and weights are compared against
-`nlrob` on contaminated exponential decay and the DNase logistic curve.
-The covariance uses Huber's asymptotic formula with the model Jacobian;
-`nlrob`'s weighted-Jacobian convention gives different standard errors.
-The implementation is checked against an analytic exponential Jacobian.
+The scale is the median absolute final residual divided by 0.6745, an
+approximation to the normal 0.75 quantile. The covariance uses Huber's
+asymptotic formula with the model Jacobian. It assumes a correctly specified
+model with independent, symmetric, homoscedastic errors and a full-column-rank
+Jacobian; it is not heteroscedasticity-robust. A rank-deficient final Jacobian
+raises `ValueError` because the parameters are not locally identifiable. The
+implementation is checked against an analytic exponential Jacobian.
 A zero median residual scale emits an exact-fit warning and returns zero
 covariance; standard errors in that degenerate case do not support ordinary
 inference. Robust residual weights protect against vertical outliers; leverage

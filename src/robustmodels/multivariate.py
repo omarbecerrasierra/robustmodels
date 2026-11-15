@@ -110,9 +110,11 @@ class ROBPCA(_RobustPCA):
         among the components with a variance above 0.001 times the largest,
         and at most ``max_components``.
     alpha : float in [0.5, 1], default 0.75
-        Coverage: the method resists up to a fraction ``1 - alpha`` of outliers.
-        The subset size is ``h_alpha_n(alpha, n, k_max)``, with ``k_max`` the
-        smaller of ``max_components`` and the rank of the data.
+        Coverage parameter; finite-sample resistance also depends on dimension and ``h_``.
+        The subset size is ``max(floor(alpha * n), floor((n + k_max + 1) / 2))``,
+        with ``k_max`` the requested number of components, or ``max_components``,
+        capped at the rank of the data. The same subset size is used in the
+        final MCD fit.
     max_components : int, default 10
         Largest number of components chosen when ``n_components`` is None.
     n_directions : int, default 250
@@ -205,10 +207,11 @@ class ROBPCA(_RobustPCA):
             raise ValueError("all observations are identical")
         Z = (X - mean) @ basis  # the data in the subspace they span
         k_max = min(self.n_components or self.max_components, rank)
-        self.h_ = h_alpha_n(self.alpha, len(X), min(self.max_components, rank))
-        if rank <= min(len(X) // 5, self.max_components):
+        # Hubert et al. (2005), Appendix stage 2: one fixed h throughout ROBPCA.
+        self.h_ = max(int(self.alpha * len(X)), (len(X) + k_max + 1) // 2)
+        if rank <= min(len(X) // 5, self.max_components) and self.h_ >= (len(X) + rank + 1) // 2:
             center, axes, variances = self._mcd_components(Z, np.eye(rank), rng)
-            k = k_max if self.n_components else _n_components(variances, k_max)
+            k = min(k_max, len(variances)) if self.n_components else _n_components(variances, k_max)
             axes, variances = axes[:, :k], variances[:k]
         else:
             origin, subspace = self._robust_subspace(Z, k_max, rng)
@@ -223,9 +226,25 @@ class ROBPCA(_RobustPCA):
 
     def _mcd_components(self, Z, subspace, rng):
         """MCD center, eigenvectors and eigenvalues of ``Z`` projected on ``subspace``."""
-        mcd = MCD(alpha=self.h_ / len(Z), random_state=rng).fit(Z @ subspace)
+        projected = Z @ subspace
+        n, p = projected.shape
+        minimum = (n + p + 1) // 2
+        # MCD alpha interpolates between its minimum subset and n; h/n is
+        # not the inverse of that convention. Choose the middle of the bin
+        # for the exact requested h, avoiding a floating-point floor error.
+        alpha = 1.0 if self.h_ == n else (self.h_ + 0.5 - 2 * minimum + n) / (2 * (n - minimum))
+        mcd = MCD(alpha=alpha, random_state=rng).fit(projected)
+        if _classical_pca(projected[mcd.raw_support_])[2].shape[1] == 0:
+            raise ValueError("the robust covariance has no positive variance")
         variances, vectors = np.linalg.eigh(mcd.covariance_)
-        return mcd.location_ @ subspace.T, subspace @ vectors[:, ::-1], variances[::-1]
+        positive = variances > max(projected.shape) * np.finfo(float).eps * variances[-1]
+        if not positive.any():
+            raise ValueError("the robust covariance has no positive variance")
+        return (
+            mcd.location_ @ subspace.T,
+            subspace @ vectors[:, positive][:, ::-1],
+            variances[positive][::-1],
+        )
 
     def _robust_subspace(self, Z, k_max, rng):
         """Center and orthonormal basis of the subspace of the least outlying observations."""
@@ -234,6 +253,8 @@ class ROBPCA(_RobustPCA):
         least = np.argsort(outlyingness, kind="stable")[:h]
         center, variances, vectors = _classical_pca(Z[least])
         k = min(k_max, len(variances))
+        if k == 0:
+            raise ValueError("the least outlying observations have zero robust variance")
         if self.n_components is None:
             k = _n_components(variances, k)
         if k < Z.shape[1]:  # refit on every observation close to that subspace
@@ -355,8 +376,10 @@ class ProjectionPursuitPCA(_RobustPCA):
 
 def _classical_pca(X):
     """Mean, variances and loadings (in columns) of the components with nonzero variance."""
-    center = X.mean(axis=0)
-    _, singular, vt = np.linalg.svd(X - center, full_matrices=False)
+    offsets = X - X[0]
+    average = offsets.mean(axis=0)
+    center = X[0] + average
+    _, singular, vt = np.linalg.svd(offsets - average, full_matrices=False)
     rank = int(np.sum(singular > max(X.shape) * np.finfo(float).eps * singular[0]))
     return center, singular[:rank] ** 2 / (len(X) - 1), vt[:rank].T
 
@@ -396,8 +419,15 @@ def _pair_outlyingness(Z, h, n_directions, rng):
     outlyingness = np.zeros(n)
     for projection in directions @ Z.T:
         center, scale = _unimcd(projection, h)
-        if scale > 1e-12 * np.abs(projection).max():
-            outlyingness = np.maximum(outlyingness, np.abs(projection - center) / scale)
+        distance = np.abs(projection - center)
+        tolerance = 1e-12 * np.abs(projection).max()
+        if scale > tolerance:
+            scores = distance / scale
+        else:
+            # A zero robust scale identifies an exact-fit hyperplane.
+            # Points outside it must not disappear from the outlyingness.
+            scores = np.where(distance <= tolerance, 0.0, np.inf)
+        outlyingness = np.maximum(outlyingness, scores)
     return outlyingness
 
 
@@ -706,6 +736,8 @@ def hotelling_t2(X, mu=None, *, random_state=None):
         raise ValueError("the MCD covariance is singular")
     statistic = float(n * _mahalanobis_sq(mu[None, :], mcd.location_, mcd.covariance_)[0])
     d, q = _t2_approximation(p, n)
+    if not np.isfinite(d) or not np.isfinite(q) or d <= 0 or q <= 4:
+        raise ValueError("sample size does not admit the finite-moment F calibration")
     pvalue = float(stats.f.sf(statistic / d, p, q))
     return HotellingResult(statistic, statistic / d, (p, q), pvalue, mcd.location_)
 
@@ -842,14 +874,21 @@ def manova(X, groups, *, alpha=0.5, n_simulations=500, random_state=None):
 
 def _wilks(X, labels, fit_mcd):
     """Wilks' lambda and group means of the observations with weight 1."""
-    kept = _pooled_mcd(X, labels, fit_mcd)[1].dist_ < chi2.ppf(0.975, X.shape[1])
+    n_groups = labels.max() + 1
+    pooled = _pooled_mcd(X, labels, fit_mcd)[1]
+    if _logdet(pooled.covariance_) == -np.inf:
+        raise ValueError("the pooled covariance is singular")
+    kept = pooled.dist_ < chi2.ppf(0.975, X.shape[1])
     X, labels = X[kept], labels[kept]
-    groups = [X[labels == k] for k in range(labels.max() + 1)]
+    groups = [X[labels == k] for k in range(n_groups)]
     if min(len(group) for group in groups) == 0:
         raise ValueError("a group has no observations left after removing outliers")
     means = np.array([group.mean(axis=0) for group in groups])
     residuals = X - means[labels]
     centered = X - X.mean(axis=0)
     within, total = residuals.T @ residuals, centered.T @ centered
-    statistic = np.exp(np.linalg.slogdet(within)[1] - np.linalg.slogdet(total)[1])
+    within_logdet, total_logdet = _logdet(within), _logdet(total)
+    if within_logdet == -np.inf or total_logdet == -np.inf:
+        raise ValueError("within-group or total scatter is singular")
+    statistic = np.exp(within_logdet - total_logdet)
     return float(statistic), means

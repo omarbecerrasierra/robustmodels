@@ -1,9 +1,10 @@
 # Coming from R: robustbase and rrcov equivalents
 
 This page maps functions from R's robustbase, rrcov and base packages to
-robustmodels. Results agree up to the conventions documented in the
-[method references](references.md), such as finite-sample corrections, tie
-handling and random starts.
+robustmodels. These are migration correspondences, not promises of identical
+results or a definition of correctness. The [method references](references.md)
+and [validation notes](validation.md) describe mathematical definitions,
+finite-sample corrections, tie handling and computational approximations.
 
 ## Location and scale
 
@@ -18,7 +19,7 @@ handling and random starts.
 | `robustbase::mc(x)` | `scale.medcouple(x)` |
 
 `huberM` uses `k = 1.5` by default, while `m_location` uses the more common
-`c = 1.345`; pass `c=1.5` to match R. `location.winsorized_mean` replaces
+`c = 1.345`; pass `c=1.5` to select that same tuning convention. `location.winsorized_mean` replaces
 `floor(n * proportion)` observations in each tail, like `mean(x, trim =)`;
 `psych::winsor.mean` and `DescTools::Winsorize` clip at sample quantiles
 instead, so they can give different results. robustmodels also provides `scale.pn`

@@ -38,11 +38,13 @@ uv run pytest --doctest-modules --pyargs robustmodels
 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 ```
 
-CI tests the installed wheel on Python 3.10–3.14 on Linux, Windows and macOS.
+CI tests the installed wheel on Python 3.10–3.15 on Linux, Windows and macOS.
 Python 3.10 jobs use the minimum supported NumPy, SciPy and scikit-learn versions.
 The examples in `docs/` and the docstrings run as tests. The test suite covers
-estimator definitions, statistical properties, edge cases, comparisons with R's
-robustbase and rrcov, and scikit-learn compatibility. A separate CI job checks
+estimator definitions, statistical properties, exact small problems, numerical
+derivatives, edge cases and scikit-learn compatibility. Frozen outputs from
+other software are supplementary regression checks with recorded provenance.
+They must not replace independent verification of the mathematical definition. A separate CI job checks
 coverage and reports it to Codecov. Mark a line with `# pragma: no cover` only when
 it cannot be reached, and say why in the comment.
 

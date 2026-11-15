@@ -251,3 +251,10 @@ def test_skewness_and_tail_weight_of_an_empty_sample_are_nan():
 
 def test_tau_scale_is_zero_when_more_than_half_the_values_are_tied():
     assert tau_scale([3.0, 3.0, 3.0, 3.0, 10.0]) == 0.0
+
+
+def test_pn_large_finite_pairwise_means():
+    # Off-diagonal means are 1.05e308, 1.10e308 and 1.15e308.
+    assert pn(
+        [1e308, 1.1e308, 1.2e308], consistency=False, finite_correction=False
+    ) == pytest.approx(1e307, rel=1e-14)

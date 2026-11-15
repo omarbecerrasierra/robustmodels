@@ -34,7 +34,7 @@ are enough to create one. ROBPCA finds the subspace of the bulk of the data:
 >>> X[:10] += 5  # ten outliers away from the plane
 >>> pca = ROBPCA(random_state=0).fit(X)
 >>> pca.n_components_, pca.explained_variance_.round(1).tolist()
-(2, [42.6, 24.2])
+(2, [42.5, 24.2])
 >>> pca.transform(X).shape
 (100, 2)
 >>> np.flatnonzero(~pca.support_).tolist()
@@ -84,9 +84,9 @@ data is largest:
 
 ## Discriminant analysis
 
-`RobustLDA` and `RobustQDA` are scikit-learn classifiers. Outliers in the
-training data, including mislabeled observations, do not move the class
-centers:
+`RobustLDA` and `RobustQDA` are scikit-learn classifiers. Robust class
+location and scatter estimates limit the influence of training outliers,
+including mislabeled observations, within their contamination assumptions:
 
 ```pycon
 >>> from robustmodels.multivariate import RobustLDA
@@ -153,48 +153,60 @@ not distribution-free results.
 
 ## Numerical limits and sources
 
-**ROBPCA.** The outlyingness uses directions through pairs of observations: all
-pairs when there are at most `n_directions`, otherwise a random selection, so
-set `random_state` for reproducible results. When every pair is used, the fit
-agrees with `rrcov::PcaHubert` to rounding error on the reference data sets
-(center, loadings up to sign, eigenvalues and both distances). The orthogonal
-cutoff follows the paper, with the univariate MCD of the distances to the power
-2/3; rrcov uses their median and MAD, which gives a different cutoff. With all
-components retained there are no orthogonal distances and the cutoff is 0.
+**ROBPCA.** The outlyingness uses directions through pairs of observations:
+all pairs when there are at most `n_directions`, otherwise a random selection,
+so set `random_state` for reproducible results. The subset size follows the
+paper's Appendix, `h = max(floor(alpha*n), floor((n+k_max+1)/2))`, and is
+preserved in the final MCD. Zero robust projection scale gives infinite
+outlyingness away from its hyperplane, rather than silently dropping that
+direction. The implementation selects components with positive robust spread
+and rejects point masses or numerically unidentified components.
+
+This is a computational ROBPCA variant: the final scatter uses the package's
+generic corrected MCD and random starts. It does not reproduce every Appendix
+step, including its additional C-steps from `H0` and its empirical h-quantile
+scale correction. Independent tests check the defining h, orthonormality,
+reconstruction, score/orthogonal distances, rotations and exact-fit cases.
+The orthogonal cutoff uses univariate MCD on distances to the power 2/3.
+With all components retained the orthogonal cutoff is 0. Finite direction
+searches and local subset optimization do not certify global optimality or
+uniform subspace recovery under arbitrary contamination.
 
 **Projection pursuit.** The grid search stops at a local maximum of a
-criterion that is not smooth. In the tests it reaches the maximum of a dense
-search in two dimensions, and reproduces classical PCA when the scale is the
-standard deviation. A cluster of outliers close to the data inflates the
-robust scale in intermediate directions and tilts the first component, the
-known bias of projection-pursuit estimators: on the plane example above the
-fitted plane is 28 degrees away from that of the regular observations.
-`scale="qn"` is more efficient than the default MAD and much slower for
-thousands of observations.
+nonsmooth criterion. Independent tests compare it with a dense search in two
+dimensions and recover classical PCA when scale is standard deviation.
+Outliers near the main data can inflate scale in intermediate directions and
+tilt the components. `scale="qn"` is more efficient under a Gaussian model
+than default MAD and computationally more expensive for large samples.
 
-**Discriminant analysis.** The common covariance is the reweighted MCD of the
-observations centered by class (pooled observations), as the default of
-`rrcov::Linda`; means and covariance match it to rounding error when both
-searches find the same subsets. A class whose MCD covariance is singular, for
-example because more than half of the values of a variable are tied, raises
-`ValueError`.
+**Discriminant analysis.** The common covariance is the reweighted MCD of
+observations centered by class. The discriminant scores are normal log
+densities plus log priors; tests calculate those densities directly. A class
+with singular robust scatter raises `ValueError`. Every class must have more
+observations than variables. Older scikit-learn generic checks that violate
+this mathematical requirement are documented as expected failures; equivalent
+feature/dtype properties are also tested with valid per-class samples.
 
-**Hotelling's T².** The scaled F distribution uses the constants that Willems
-et al. fitted to simulations of the reweighted MCD with coverage 0.75; the
-statistic, degrees of freedom and p-value agree with `rrcov::T2.test` to
-rounding error. The approximation is slightly liberal: in simulations with
-normal data (`n = 40, p = 1`; `n = 50, p = 3`; `n = 100, p = 5`) the test
-rejected 5.5%, 6.0% and 6.7% of the time at the 5% level.
+**Hotelling's T².** The statistic is `n*(t-mu)' C^-1 (t-mu)`, with a scaled
+F approximation using the moment-calibration constants of Willems et al. for
+reweighted MCD with coverage 0.75. A nonpositive or nonfinite scale, or degrees
+of freedom `q<=4`, invalidates the two finite moments used by that approximation
+and raises `ValueError`. The approximation can be liberal. Independent normal
+null checks at nominal 5% gave 58/1000 rejections for `n=40,p=1` (5.8%; exact
+95% binomial interval 4.43–7.43%) and 24/300 for `n=50,p=3` (8.0%; interval
+5.19–11.67%). These bounded experiments do not establish uniform calibration.
 
-**MANOVA.** There is no closed form for the null distribution of the robust
-Wilks' lambda: it is simulated for the group sizes and dimension at hand, so
-the p-value has Monte Carlo error and depends on `random_state`. Each simulated
-sample needs one MCD per group and one for the pooled data, which is why the
-deterministic MCD is used; 500 simulations of three groups of 30 take a few
-seconds. With FAST-MCD the statistic agrees with `rrcov::Wilks.test` to
-rounding error; with the deterministic search another subset, and another
-lambda, can be found. In simulations with normal data, also strongly
-correlated, the test rejected 3.7% to 6.2% of the time at the 5% level.
+**MANOVA.** The robust Wilks statistic requires defined weighted means for
+all original groups and nonsingular within/total scatter. Singular cases or
+trimming that removes any group raise `ValueError`. The null statistic is
+simulated for the observed group sizes and dimension using deterministic MCD;
+a two-moment chi-square calibration adds approximation error, and the finite
+simulation adds Monte Carlo error. The p-value depends on `random_state`.
+An independent normal null check with three equal groups, `n=60,p=2`, 100
+calibration simulations and 80 repetitions rejected once at nominal 5%
+(1.25%; exact 95% interval 0.032–6.77%). This small experiment does not prove
+general conservatism or exact level. Both mean-vector tests rely on the
+regular-data normal model and are not distribution-free.
 
 Sources: [ROBPCA](references.md#hrvb05), projection pursuit
 ([definition](references.md#lc85), [grid algorithm](references.md#cfo07)),

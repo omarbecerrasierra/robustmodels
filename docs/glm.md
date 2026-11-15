@@ -41,33 +41,61 @@ True
 
 ```
 
-## Numerical conventions and R
+## Defining equations and inference assumptions
 
-The sources are Cantoni and Ronchetti (2001), Bianco and Yohai (1996), Croux
-and Haesbroeck (2003), and Valdora and Yohai (2014); full citations appear in
-the class references below.
+Mallows solves a Huberized Pearson estimating equation with its conditional
+model expectation subtracted. For a fixed design, the covariance uses the
+conditional score variance and sensitivity for each observation. Independent
+tests evaluate Poisson expectations directly and differentiate them numerically;
+BY tests verify that its corrected binary score has zero expectation at the
+nominal probability. [Cantoni and Ronchetti](references.md#cr01) and
+[Croux and Haesbroeck](references.md#ch03) provide the defining theory.
 
-- Mallows coefficients and residual weights agree with robustbase's `Mqle`
-  on the frozen reference samples to about `1e-10`. Its sandwich covariance
-  subtracts the correction's squared mean separately for every observation;
-  robustbase subtracts an averaged correction. Standard errors can differ.
-- `x_weights="hat"` uses `sqrt(1 - h_ii)`, as the paper; robustbase uses
-  `(1 - h_ii)^2` under that name.
+`MTPoissonRegressor` minimizes a transformed-count criterion with ordinary
+bisquare loss. Its ideal correction `m(mu)` minimizes
+`E[rho(sqrt(Y) - m)]` for Poisson `Y`; the code approximates that function by
+a cubic Hermite spline and a continuous value extension above mean 100.
+The first grid interval is searched explicitly, because an interior minimum
+near zero can be missed by testing only interior grid nodes. Direct Poisson
+summation checks the correction equation at small means, rather than using
+another program's output as its target.
+
+This is an **MT-style computational variant**. The consistency argument
+requires a uniquely defined, strictly increasing correction, correct model
+specification and identification. The specific smooth-loss family in
+[Valdora and Yohai, section 4](references.md#vy14) uses exponent 4, whereas
+ordinary bisquare uses exponent 3. The source theorem's differentiability
+assumptions therefore do not automatically apply to this implementation.
+`c<=1` is rejected because the correction can remain flat at zero for small
+means. `c>1` is a necessary guard here, not a proof of uniqueness, global
+monotonicity or every asymptotic assumption for all accepted constants.
+The spline has approximation error; local optimization does not certify a
+global minimum. Standard errors require a locally identified regular solution.
+
+## Numerical conventions and software correspondence
+
+- `x_weights="hat"` uses `sqrt(1 - h_ii)`, as the Mallows source; robustbase
+  uses `(1 - h_ii)^2` under that name. The conditional Mallows sandwich also
+  uses an observation-specific mean correction rather than an averaged one.
 - Weighted BY fits the trimmed subset. robustbase's `WBY` uses trimming for
-  initialization and then minimizes the unweighted criterion. Use
-  `weighted=False` for comparisons with its unweighted `BY`.
-- MT interpolates the Fisher-consistent transformation on a grid using cubic
-  Hermite splines and extends it continuously above mean 100. robustbase's
-  interpolation and tail convention differ. Reference coefficients agree to
-  about `1e-3`, rather than machine precision.
+  initialization and then minimizes an unweighted criterion. These are
+  different procedures, and numerical equality is not an acceptance condition.
 - Linear predictors used to evaluate means are clipped to `[-30, 30]` for
-  numerical stability. Scoring steps change each linear predictor by at most
-  5. Separated logistic data can still lack finite coefficients: check
-  `converged_` and the emitted `RuntimeWarning`. A small gradient is a local
-  optimization criterion, not an existence or identifiability guarantee.
+  numerical stability. Mallows scoring steps change each predictor by at most
+  5. The MT gradient differentiates its implemented clipped objective. A final
+  MT solution touching the numerical cap is reported with `converged_=False`,
+  a `RuntimeWarning` and unavailable covariance, standard errors and tests
+  (`NaN`), so a numerical plateau is not presented as ordinary inference.
+- Separated logistic data can lack finite coefficients. Check `converged_`
+  and the emitted warnings. A small gradient alone does not establish existence
+  or identification. The usual normal inference is asymptotic.
 - An all-zero Poisson response with an intercept has no finite intercept and
-  raises `ValueError`. Collinear designs and samples with no residual degrees
-  of freedom are also rejected. Normal inference is asymptotic.
+  raises `ValueError`. Collinear designs and samples without residual degrees
+  of freedom are also rejected.
+
+The [validation notes](validation.md) document independent checks, corrected
+counterexamples and the remaining scientific limits. Software correspondence
+is collected in the [migration guide](from-r.md).
 
 ## Reference
 

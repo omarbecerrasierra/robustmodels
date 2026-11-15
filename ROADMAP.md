@@ -14,8 +14,10 @@ Suggestions and use cases are welcome in
 - **scikit-learn API:** estimators use `fit`, `predict` and `transform`, store
   fitted attributes with a trailing underscore, and pass scikit-learn's estimator checks.
 - **Independent validation:** each method is tested against its definition,
-  theoretical properties and published results. R packages such as robustbase
-  and rrcov are an external reference, and differences in conventions are documented.
+  theoretical properties and published results. Exact small problems, numerical
+  integration, derivatives and model-based simulations provide independent
+  checks. Other software outputs are supplementary regression references;
+  differences are assessed against the definition and assumptions.
 - **Explicit conventions:** choices such as finite-sample corrections or the
   subset size `h` are documented and, where useful, selectable.
 - **Few dependencies:** NumPy, SciPy, scikit-learn and Matplotlib for diagnostics.

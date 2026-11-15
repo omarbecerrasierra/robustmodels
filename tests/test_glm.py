@@ -216,10 +216,12 @@ def test_x_weights_and_nonconvergence():
             MallowsPoissonRegressor(tol=tol).fit(X, y)
 
 
-def test_mt_mean_small_tuning_does_not_select_wrong_local_mode():
-    # At mu=0.1 and c=0.1 the support intervals around sqrt(count) are
-    # disjoint and the mass at zero is largest. Its exact minimum is m=0.
-    assert _mt_mean(0.1)(np.array([0.1]))[0] == pytest.approx(0, abs=1e-8)
+def test_mt_mean_rejects_tuning_that_cannot_identify_small_means():
+    # For c <= 1, positive counts lie outside the score's support at m=0:
+    # m=0 is a stationary minimum for a range of means and cannot be strictly
+    # increasing, as required by the MT consistency assumptions.
+    with pytest.raises(ValueError, match="c must be in"):
+        _mt_mean(0.1)
 
 
 def test_weighted_by_rejects_subset_without_both_classes():
@@ -237,3 +239,87 @@ def test_count_response_conversion_validation(response, message):
     # Validate conversion before any moments or optimization can see invalid counts.
     with pytest.raises(ValueError, match=message):
         MallowsPoissonRegressor()._counts(response)
+
+
+def test_mt_transformation_by_direct_poisson_score_at_small_means():
+    from robustmodels.regression import _bisquare
+
+    means = np.array([0.001, 0.01, 0.05, 0.1, 0.15, 0.25, 0.55, 1.55])
+    transformed = _mt_mean(2.1)(means)
+    scores = []
+    for mu, location in zip(means, transformed, strict=True):
+        values = np.arange(40)
+        psi = _bisquare(np.sqrt(values) - location, 2.1)[0]
+        scores.append(stats.poisson.pmf(values, mu) @ psi)
+    np.testing.assert_allclose(scores, 0, atol=3e-6, rtol=0)
+    assert np.all(np.diff(transformed) > 0)
+
+
+def test_mt_clipped_objective_has_zero_gradient_and_no_inference():
+    # Choose observations within the nonconstant part of the bisquare loss;
+    # otherwise a zero derivative would occur from rejection alone.
+    mu = np.exp(30)
+    y = np.full(3, np.round((np.sqrt(mu) + 0.5) ** 2))
+    problem = _MTProblem(np.ones((3, 1)), y, np.ones(3), 2.1)
+    coef = np.array([30.1])
+    h = 1e-5
+    numeric = (problem.objective(coef + h) - problem.objective(coef - h)) / (2 * h)
+    np.testing.assert_allclose(problem.gradient(coef), [numeric], atol=1e-10)
+    assert problem.is_clipped(coef)
+    assert np.isnan(problem.covariance(coef)).all()
+
+
+def test_mt_numerical_plateau_cannot_report_convergence(monkeypatch):
+    from types import SimpleNamespace
+
+    from robustmodels import glm
+
+    monkeypatch.setattr(
+        glm.optimize,
+        "minimize",
+        lambda *args, **kwargs: SimpleNamespace(
+            success=True, x=np.array([31.0, 0.0]), fun=1.0, nit=1
+        ),
+    )
+    X = np.arange(10.0)[:, None]
+    with pytest.warns(RuntimeWarning, match="did not converge"):
+        fit = MTPoissonRegressor(n_trials=2, random_state=0).fit(X, np.ones(10))
+    assert not fit.converged_
+    assert np.isnan(fit.std_errors_).all()
+
+
+def test_by_score_has_zero_conditional_expectation():
+    predictors = np.linspace(-6, 6, 31)
+    probability = 1 / (1 + np.exp(-predictors))
+    positive = _by_loss(predictors, np.ones(len(predictors)), 0.5)[1]
+    negative = _by_loss(predictors, np.zeros(len(predictors)), 0.5)[1]
+    np.testing.assert_allclose(probability * positive + (1 - probability) * negative, 0, atol=1e-16)
+
+
+def test_mallows_covariance_from_conditional_distribution_derivatives():
+    rng = np.random.default_rng(15)
+    X = np.linspace(-1, 1, 60)[:, None]
+    design = np.c_[np.ones(len(X)), X]
+    y = rng.poisson(np.exp(design @ [0.3, 0.5]))
+    fit = MallowsPoissonRegressor(tol=1e-11).fit(X, y)
+    eta = fit.intercept_ + X[:, 0] * fit.coef_[0]
+    values = np.arange(100)
+    c, h = fit.c, 1e-5
+    sensitivity, variance = [], []
+    for linear in eta:
+        mu = np.exp(linear)
+        true_mass = stats.poisson.pmf(values, mu)
+
+        def centered_score(candidate):
+            mean = np.exp(candidate)
+            psi = np.clip((values - mean) / np.sqrt(mean), -c, c)
+            correction = stats.poisson.pmf(values, mean) @ psi
+            return (psi - correction) * np.sqrt(mean)
+
+        sensitivity.append(
+            -true_mass @ (centered_score(linear + h) - centered_score(linear - h)) / (2 * h)
+        )
+        variance.append(true_mass @ centered_score(linear) ** 2)
+    bread = np.linalg.inv(design.T @ (design * np.array(sensitivity)[:, None]))
+    meat = design.T @ (design * np.array(variance)[:, None])
+    np.testing.assert_allclose(fit.cov_params_, bread @ meat @ bread.T, rtol=1e-7)

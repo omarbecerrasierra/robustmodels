@@ -479,8 +479,11 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
     cov_params_ : ndarray of shape (n_params, n_params)
         Asymptotic covariance matrix (Huber 1981):
         ``scale_^2 (sum(psi^2) / (n - p)) / mean(psi')^2 (J'J)^-1``, with ``J``
-        the Jacobian of the model. ``nlrob`` uses the weighted ``J'WJ`` and the
-        mean squared weight instead, which is not the asymptotic variance.
+        the Jacobian of the model. This formula assumes a correctly specified
+        model with independent symmetric homoscedastic errors and a
+        full-column-rank Jacobian. It is not heteroscedasticity-robust.
+        A rank-deficient Jacobian raises ``ValueError`` because its parameters
+        are not locally identifiable.
     std_errors_ : ndarray of shape (n_params,)
         Standard errors.
     n_iter_ : int
@@ -553,6 +556,11 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
         scale = float(np.median(np.abs(current)) / 0.6745)
         self.params_, self.scale_, self.n_iter_ = params, scale, iteration
         self.converged_ = converged
+        jacobian = optimize.approx_fprime(params, lambda b: self._evaluate(X, b))
+        if np.linalg.matrix_rank(jacobian) < p:
+            raise ValueError(
+                "model Jacobian is rank deficient; parameters are not locally identifiable"
+            )
         if scale == 0:
             warnings.warn("exact fit: most residuals are zero", RuntimeWarning, 2)
             self.weights_ = (current == 0).astype(float)
@@ -560,7 +568,6 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
         else:
             t = current / scale
             self.weights_ = _huber_weights(t, self.c)
-            jacobian = optimize.approx_fprime(params, lambda b: self._evaluate(X, b))
             psi = np.clip(t, -self.c, self.c)
             factor = (
                 scale**2 * (psi @ psi / (n - p)) / max(np.mean(np.abs(t) <= self.c), 1 / n) ** 2

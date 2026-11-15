@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Add Python 3.15 to the Linux, Windows and macOS CI matrix and compatibility metadata.
+- Audit the implemented formulas against primary theory and independent numerical
+  checks; document assumptions, computational variants and remaining limits.
+- Correct ROBPCA's published subset size and preserve it in the final MCD;
+  retain infinite outlyingness for off-hyperplane points when projection scale
+  is zero, and reject unidentified or numerically degenerate components.
+- Reject undefined Hotelling moment calibrations and singular MANOVA statistics;
+  preserve every original group through trimming.
+- Correct MT transformation minima near zero and differentiate its clipped
+  numerical objective; capped fits report non-convergence and unavailable inference.
+  Exclude `c<=1`; larger constants still require the documented regularity assumptions.
+- Reject rank-deficient nonlinear model Jacobians. Document the independent,
+  symmetric, homoscedastic error assumptions of nonlinear covariance.
+- Correct univariate depth boundaries, narrow bivariate angular cells and
+  bag interpolation with nonzero inner segments. Prevent representable
+  Hodges–Lehmann/Pn results from overflowing during pairwise averaging.
+
 - Add robust logistic and Poisson GLMs: Mallows, Bianco–Yohai (with optional
   leverage trimming) and MT, with sandwich inference and coefficient tables.
 - Add nonlinear Huber M regression, final-residual scale and covariance,
@@ -9,14 +26,13 @@
 - Add halfspace depth, regression depth, the bivariate Tukey median,
   bagplot statistics and `plots.bagplot`, including degenerate bags.
 - Add directional outlyingness with side-specific robust scales.
-- Add frozen R witnesses, independent definition
-  checks, scikit-learn checks and guides for the new methods.
+- Add independent definition checks, scikit-learn checks and method guides;
+  preserve frozen software outputs as supplementary regression fixtures.
 
 - Add `multivariate`: robust principal components (`ROBPCA` and
   `ProjectionPursuitPCA`), robust discriminant analysis (`RobustLDA` and
   `RobustQDA`), the robust one-sample Hotelling test `hotelling_t2` and the
-  robust one-way `manova`. ROBPCA, the discriminant rules and Hotelling's test
-  agree with rrcov to rounding error on the reference data.
+  robust one-way `manova`, with model assumptions and approximation limits.
 - Add `covariance.StahelDonoho`, the Stahel-Donoho estimator of location and
   scatter with the weights of Maronna and Yohai (1995).
 - Add `plots.pca_outlier_map`, `plots.scree_plot` and `plots.biplot` for robust
@@ -37,12 +53,12 @@
 ## 0.1.3 (2026-11-12)
 
 - Add `outliers.StahelDonohoOutlyingness` and `outliers.AdjustedOutlyingness`,
-  scikit-learn outlier detectors with projection depth scores; they agree with
-  mrfDepth and are exact on integer data where rounding misleads it.
+  scikit-learn outlier detectors with projection depth scores and explicit
+  projection-tie handling.
 - Add `regression.LTSRegressor`: least trimmed squares regression with FAST-LTS,
-  reweighting and small-sample corrections; it matches robustbase's `ltsReg`.
-- Add `regression.SRegressor` (FAST-S) and `regression.MMRegressor`, which agree
-  with robustbase's `lmrob` up to its rounded tuning constants.
+  reweighting and small-sample corrections.
+- Add `regression.SRegressor` (FAST-S) and `regression.MMRegressor`, with
+  documented tuning and scale equations.
 - `MMRegressor` reports heteroskedasticity-robust standard errors, t values and
   p-values (Croux, Dhaene & Hoorelbeke 2003) and an R-style `summary()`.
 - Add the Zenodo DOI to the README and `CITATION.cff`.
