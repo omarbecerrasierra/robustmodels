@@ -71,6 +71,13 @@ def test_equivariance():
     assert lmc(-x) == pytest.approx(rmc(x), abs=1e-15)
 
 
+@pytest.mark.parametrize("factor", [1e308, 1e-308, 2.0**900, 3.0])
+def test_medcouple_is_scale_invariant_at_the_limits_of_float64(factor):
+    x = np.array([0.1, 0.2, 0.2, 0.3, 0.4, 0.5, 0.9, 1.7])  # x * 1e308 stays finite
+    assert medcouple(x * factor) == pytest.approx(medcouple(x), abs=1e-12)
+    assert lmc(x * factor) == pytest.approx(lmc(x), abs=1e-12)
+
+
 def test_medcouple_special_cases():
     assert medcouple([2.0, 2.0, 2.0]) == 0.0
     assert medcouple(np.arange(10.0)) == 0.0
@@ -244,3 +251,10 @@ def test_skewness_and_tail_weight_of_an_empty_sample_are_nan():
 
 def test_tau_scale_is_zero_when_more_than_half_the_values_are_tied():
     assert tau_scale([3.0, 3.0, 3.0, 3.0, 10.0]) == 0.0
+
+
+def test_pn_large_finite_pairwise_means():
+    # Off-diagonal means are 1.05e308, 1.10e308 and 1.15e308.
+    assert pn(
+        [1e308, 1.1e308, 1.2e308], consistency=False, finite_correction=False
+    ) == pytest.approx(1e307, rel=1e-14)

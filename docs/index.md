@@ -1,7 +1,8 @@
 # robustmodels
 
 Robust statistics for Python: estimators of location, scale, covariance and
-linear regression, and outlier detectors, that stay reliable when part of the data are outliers.
+linear and nonlinear regression, generalized linear models, principal
+components, discriminant analysis, statistical depth and outlier detectors, that stay reliable when part of the data are outliers.
 
 ```bash
 pip install robustmodels
@@ -46,10 +47,13 @@ The covariance estimators are scikit-learn estimators:
 | [Location](location.md) | Hodges-Lehmann, M-estimators, tau location, trimmed and winsorized means |
 | [Scale and skewness](scale.md) | MAD, Qn, Sn, Pn, tau scale, M-scale, medcouple and tail weights |
 | [Method references](references.md) | Scientific sources, formulas and R conventions |
-| [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, S- and MM-estimators; outlier detection |
-| [Regression](regression.md) | MM, S and least trimmed squares (LTS) regression; outlier detection |
-| [Outlier detection](outliers.md) | Stahel-Donoho and adjusted outlyingness; projection depth; skewed data |
-| [Diagnostic plots](plots.md) | Outlier maps, distance-distance plots, tolerance ellipses, adjusted boxplots and outlyingness |
+| [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, Stahel-Donoho, S- and MM-estimators; outlier detection |
+| [Multivariate methods](multivariate.md) | Robust PCA (ROBPCA, projection pursuit), LDA and QDA, Hotelling's T² and MANOVA |
+| [Regression](regression.md) | MM, S, LTS and nonlinear M regression |
+| [Generalized linear models](glm.md) | Robust logistic and Poisson models, inference and numerical conventions |
+| [Depth](depth.md) | Halfspace and regression depth, Tukey median and bagplot |
+| [Outlier detection](outliers.md) | Stahel-Donoho, adjusted and directional outlyingness; projection depth |
+| [Diagnostic plots](plots.md) | Regression and PCA outlier maps, quantile plots, distance-distance plots, tolerance ellipses, scree plots, biplots, classification regions, adjusted boxplots, bagplots and outlyingness |
 | [Validation](validation.md) | Definitions, pre-release checks and documented differences from R |
 
 Each page explains how to choose and use the estimators, then documents every
@@ -74,7 +78,10 @@ example.
 location
 scale
 covariance
+multivariate
 regression
+glm
+depth
 outliers
 plots
 validation

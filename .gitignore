@@ -1,6 +1,6 @@
 README_plan.md
 auditoria_investigacion
-
+research_notes
 # Python
 __pycache__/
 *.py[cod]
@@ -15,3 +15,5 @@ coverage.xml
 htmlcov/
 docs/_build/
 .claude
+reports
+.mypy_cache

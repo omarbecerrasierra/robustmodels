@@ -10,8 +10,9 @@ the bulk of the data along many one-dimensional projections, in
 | --- | --- | --- |
 | `StahelDonohoOutlyingness` | Roughly symmetric | Median and MAD of each projection; fast |
 | `AdjustedOutlyingness` | Skewed | Adjusted boxplot of each projection; finds outliers that skewness masks |
+| `DirectionalOutlyingness` | Skewed | Side-specific one-step robust scales; no medcouple required |
 
-Both need more observations than variables, are affine invariant, and make no
+All three need more observations than variables, are affine invariant, and make no
 assumption of elliptical shape. `covariance.MCD` with robust distances is an
 alternative for elliptical data.
 
@@ -84,8 +85,9 @@ reaches at least 95% of the supremum found by searching 100,000 directions.
 
 Observations are flagged when their outlyingness exceeds
 `exp(median(L) + mad(L) z) - 0.1`, with `L = log(0.1 + outlyingness)` and
-`z` the 0.995 normal quantile, as in mrfDepth. It adapts to the data: with no
-outliers, few or no points are flagged (under 2% in the tests with normal data).
+`z` the 0.995 normal quantile. This is an approximate adaptive rule, not an
+exact 0.5% false-positive guarantee. The directional-outlyingness source
+derives this log-scale rule in equation (7).
 
 Adjusted outlyingness computes a medcouple for every direction. Fitting 1000
 observations of five variables (1250 directions) takes a few seconds, against
@@ -95,10 +97,8 @@ a fraction of a second for Stahel-Donoho outlyingness. Quartiles use the
 The observations that define a direction, and any others on the same
 hyperplane, have equal projections. Rounding can break those ties, which the
 medcouple treats specially, so projections that differ only by rounding are
-merged. On the integer stackloss data this reproduces the adjusted
-outlyingness computed in exact arithmetic to `1e-14`; mrfDepth, which does not
-merge them and whose medcouple departs from its definition for tied data,
-differs by up to 14% there, although both flag the same observations. If more
+merged. Exact-arithmetic projection checks verify the selected tie convention;
+software that uses another convention can produce different scores. If more
 than half of the projections on a direction coincide, the other observations
 have infinite outlyingness and are flagged.
 
@@ -106,6 +106,27 @@ Sources: [Stahel-Donoho outlyingness](references.md#s81),
 [projection depth](references.md#z03),
 [adjusted outlyingness](references.md#hvdv08) and
 [the adjusted boxplot](references.md#hv08).
+
+## Directional outlyingness
+
+`DirectionalOutlyingness` uses a separate one-step robust scale above and
+below each projection median (Rousseeuw, Raymaekers and Hubert, 2018).
+It needs no medcouple and uses the same fitted depth, cutoff and prediction
+interface as the other detectors. Use it for skewed data where a single
+symmetric scale hides short-side outliers. `plots.outlyingness_plot` accepts
+all three detector classes.
+
+The half samples include the median for odd sample sizes, as in the paper,
+and the Gaussian calibration is evaluated analytically. mrfDepth 1.0.17
+excludes the odd median and rounds the calibration constant to 1.54, so its
+scores use a different numerical convention. Tests integrate the scale
+expectation independently, check normal quantiles and affine transformations,
+and run scikit-learn's estimator checks. Equations (2)–(3) of
+[Rousseeuw, Raymaekers and Hubert](https://arxiv.org/html/1608.05012) define
+the scales. Their 25% implosion/explosion breakdown results for the side
+scales assume a continuous symmetric unimodal model with density strictly
+decreasing away from its center. They are not a 50% breakdown guarantee for
+these scales. Zero side scales yield infinite outlyingness for nonzero deviations.
 
 ## Reference
 
@@ -115,5 +136,7 @@ Sources: [Stahel-Donoho outlyingness](references.md#s81),
 .. autoclass:: StahelDonohoOutlyingness
    :members: fit, outlyingness, score_samples, decision_function, predict
 .. autoclass:: AdjustedOutlyingness
+   :members: fit, outlyingness, score_samples, decision_function, predict
+.. autoclass:: DirectionalOutlyingness
    :members: fit, outlyingness, score_samples, decision_function, predict
 ```

@@ -38,11 +38,13 @@ uv run pytest --doctest-modules --pyargs robustmodels
 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 ```
 
-CI tests the installed wheel on Python 3.10–3.14 on Linux, Windows and macOS.
+CI tests the installed wheel on Python 3.10–3.15 on Linux, Windows and macOS.
 Python 3.10 jobs use the minimum supported NumPy, SciPy and scikit-learn versions.
 The examples in `docs/` and the docstrings run as tests. The test suite covers
-estimator definitions, statistical properties, edge cases, comparisons with R's
-robustbase and rrcov, and scikit-learn compatibility. A separate CI job checks
+estimator definitions, statistical properties, exact small problems, numerical
+derivatives, edge cases and scikit-learn compatibility. Frozen outputs from
+other software are supplementary regression checks with recorded provenance.
+They must not replace independent verification of the mathematical definition. A separate CI job checks
 coverage and reports it to Codecov. Mark a line with `# pragma: no cover` only when
 it cannot be reached, and say why in the comment.
 
@@ -52,10 +54,13 @@ it cannot be reached, and say why in the comment.
 | --- | --- | --- |
 | `location.py` | Location estimators | `scale.py`, `_validation.py` |
 | `scale.py` | Scale, skewness, correction factors and pairwise selection | `_validation.py` |
-| `covariance.py` | Covariance estimators and their fitting steps | `scale.py`, `_validation.py` |
+| `covariance.py` | Covariance estimators and their fitting steps | `outliers.py`, `scale.py`, `_validation.py` |
+| `multivariate.py` | Principal components, discriminant analysis and tests on mean vectors | `covariance.py`, `_validation.py` |
+| `glm.py` | Robust logistic and Poisson models and inference | `regression.py`, `covariance.py`, `scale.py`, `_validation.py` |
+| `depth.py` | Halfspace and regression depth, Tukey median and bagplot statistics | `outliers.py`, `_validation.py` |
 | `outliers.py` | Outlier detectors by projection outlyingness | `scale.py`, `_validation.py` |
-| `plots.py` | Matplotlib diagnostics and adjusted boxplots | `covariance.py`, `scale.py`, `_validation.py` |
-| `regression.py` | Regression estimators and their fitting steps | `covariance.py`, `scale.py`, `_validation.py` |
+| `plots.py` | Matplotlib diagnostics, adjusted boxplots and bagplots | `covariance.py`, `depth.py`, `scale.py`, `_validation.py` |
+| `regression.py` | Linear and nonlinear regression and inference | `covariance.py`, `scale.py`, `_validation.py` |
 | `_validation.py` | Input checks and the random generator helper | None |
 
 Each method and its steps stay together. `__init__.py` exposes the public

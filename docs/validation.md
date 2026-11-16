@@ -1,148 +1,123 @@
 # Validation and numerical conventions
 
-This page records the review performed before version 0.1.3, on
-2026-11-12. It covers the mathematical definitions and numerical procedures
-in location, scale, covariance, regression, projection outlyingness and the
-five diagnostic plots. Comparisons with R complement independent checks of
-formulas and invariances; agreement with R alone is not the correctness
-criterion.
+Mathematical definitions, assumptions and independently calculated consequences
+are the acceptance criteria for robustmodels. The theoretical audit dated
+2026-11-13 found reproducible errors even though the earlier software tests
+passed. The corrected counterexamples and source equations are recorded in the
+[scientific audit report](https://github.com/omarbecerrasierra/robustmodels/blob/main/reports/Auditor%C3%ADa%20te%C3%B3rica%20de%20robustmodels.md).
 
-The checks are evidence for the cases and assumptions described here, not a
-proof of correctness for every floating-point input or a global-optimum
-certificate for randomized searches. Existing documented conventions remain
-part of the API.
+These checks support the cases described here. They do not prove every
+floating-point input correct, certify global optima of randomized searches,
+or establish superiority over another implementation. Coverage measures
+exercised code, not mathematical validity.
 
-## Definitions and procedures reviewed
+## Definitions and independent evidence
 
 | Area | Defining calculation | Independent checks |
 | --- | --- | --- |
-| Location | Walsh-average median for Hodges–Lehmann; fixed-scale Huber/bisquare score equations; integer-count trimming and winsorization; one-step tau location | Explicit pair enumeration, score residuals, shift/scale equivariance, contamination and zero-scale cases |
-| Scale and skewness | Qn order statistic, Sn high/low medians, Pn inverse empirical-CDF quartiles, MAD, truncated-square tau scale, bisquare M-scale, medcouple tie kernel | Brute-force definitions, Gaussian calibration, numerical integration, finite-sample simulations, reflection and root-equation residuals |
-| MCD and MRCD | Decreasing subset determinant; normal-consistency correction; common regularization weight held fixed during MRCD concentration | Exhaustive small-sample MCD comparisons, covariance transformations, positive definiteness, regularization eigenvalue bound and the published common-rho rule |
-| MVE and OGK | Covering-ellipsoid volume heuristic; robust pairwise covariance followed by orthogonalization | Covered subsets, transformation properties, contamination behavior and normal-model calibration; no claim of exact MVE optimization |
-| Multivariate S/MM | Unit-determinant shape, bisquare scale equation, fixed S-scale in MM, ordered losses | Scale-equation residuals, decreasing loss, determinant preservation, affine transformations and Gaussian shape-efficiency constants |
-| LTS and regression S/MM | Trimmed residual sum of squares; corrected residual-scale equation; fixed-scale MM refinement | Exhaustive small LTS problems, regression/scale equivariance, estimating equations, loss decrease and simulations |
-| MM inference | Sandwich covariance including uncertainty in the initial S-scale | Formula comparison with R using identical inputs, symmetry/positive-semidefinite handling, Gaussian efficiency and heteroskedastic interval simulations |
-| Projection outlyingness | Largest standardized projection over selected hyperplanes; side-specific adjusted whiskers; depth and fitted log cutoff | Affine transforms, convexity, exhaustive low-dimensional directions, exact integer-data projections and zero-scale behavior |
-| Diagnostics | Unsquared distances, standardized residuals, reference contours, adjusted fences and the detector's own flags | Coordinates and class counts, ellipse quadratic identities, observed whisker endpoints, reflection, infinite-score display and label separation |
+| Location and scale | Walsh-average median; Qn/Sn order statistics; Pn pair-mean quantiles; score and scale equations; medcouple tie kernel | Explicit enumeration, analytic calibration, quadrature, shift/scale/reflection properties and representable extreme values |
+| Covariance | Trimmed determinant, Gaussian truncation correction, common MRCD regularization, S scale and fixed-scale MM shape | Exhaustive small problems, direct Gaussian radial integration, positive definiteness, transformation properties and loss ordering |
+| Linear regression | Trimmed sum of squares; S scale equation; fixed-scale MM criterion and sandwich | Exact small LTS problems, score residuals, descent, regression equivariance and model-based simulations |
+| Nonlinear regression | Huber IRWLS with a final-residual scale and model Jacobian | Analytic exponential Jacobian, non-identifiable-parameter rejection, contamination and exact fits |
+| GLMs | Corrected conditional scores, sensitivities and sandwich variance | Direct Bernoulli/Poisson expectations, finite-difference derivatives, low-mean MT correction equations and numerical-cap cases |
+| PCA and classification | Published ROBPCA h, projection/orthogonal distances, normal discriminant scores | Actual subset-size checks, orthonormality, reconstruction, rotations, exact fits and direct normal densities |
+| Mean-vector tests | Robust T² with finite-moment F calibration; weighted Wilks statistic | Undefined-moment/singularity guards, preservation of original groups and bounded independent null simulations |
+| Depth and outlyingness | Closed halfspaces, regression separation, interpolated depth regions and directional side scales | Rational-sign halfplane enumeration, exact 1-D boundaries, exhaustive deletion with linear programming, tied segments and Gaussian quadrature |
+| Diagnostics | Fitted scores, distances, cutoffs, polygon boundaries and class counts | Coordinates, ellipse quadratic identities, observed endpoints, infinite-score display and Matplotlib interface |
 
-The linked [method references](references.md) identify the sources and
-conventions for each public function. The existing automated suite includes
-brute-force and simulation checks; the additional R runs and numerical audit
-were executed separately, without adding new R-dependent tests or fixtures.
+Scientific sources are linked in the [method-to-source map](references.md).
+The audit notes and report distinguish published results from calculations
+performed for this project and from assumptions that were not fully verified.
 
-### Independent numerical calculations
+## Counterexamples corrected in the audit
 
-Additional quadrature evaluated the defining expectations directly, rather
-than reusing the implementation's closed-form chi-square moments:
+- ROBPCA now uses the Appendix subset size and preserves it in final MCD.
+  A zero robust projection scale retains infinite outlyingness for points
+  away from the corresponding hyperplane; unidentified components are rejected.
+- MANOVA rejects singular statistics and retains every original group through
+  trimming. Hotelling rejects nonpositive or nonfinite scale calibration and
+  `q<=4`, where the two F moments used by the approximation do not exist.
+- MT searches the first correction-grid interval. At Poisson mean 0.05,
+  direct summation of its defining score changed from about `0.0288` to
+  `-5.0e-7`; the maintained test checks small means with a `3e-6` tolerance.
+  Its gradient now differentiates the implemented clipped objective, and a
+  final fit at the predictor cap has unavailable inference and reports
+  non-convergence. `c<=1` is excluded by the near-zero transformation argument.
+- Nonlinear regression rejects a rank-deficient final model Jacobian, rather
+  than reporting individual-parameter standard errors from a pseudoinverse.
+- Halfspace depth uses direct 1-D comparisons and open bivariate angular
+  cells. A narrow seven-point example now gives the rationally enumerated
+  `2/7`, rather than `3/7`. An additional 1000 narrow samples agreed with
+  independent exact-sign enumeration; this is finite evidence, not a proof
+  for all IEEE-754 inputs.
+- Bag interpolation retains nonzero inner segments. The tied five-point
+  example has the independently derived diagonal boundary `(13/6,13/6)`.
+- Safe pair and central averages prevent intermediate overflow in
+  Hodges–Lehmann and Pn when the mathematical result is representable.
 
-| Check | Cases | Largest absolute discrepancy |
-| --- | --- | --- |
-| `E[rho_c(||Z||)] = breakdown` | Dimensions 1, 2, 5, 10; breakdown 0.1, 0.3, 0.5 | `7.8e-16` |
-| Bisquare regression efficiency `E[psi']² / E[psi²]` | Efficiencies 0.5, 0.85, 0.95 | `1.9e-15` |
-| Bisquare shape-efficiency expectation | Those efficiencies and dimensions 1, 2, 5, 10 | `9.1e-14` |
-| MCD consistency times truncated normal variance | Dimensions 1, 2, 5, 10; coverages 0.5, 0.75, 0.975 | `5.6e-16` |
-| Ellipse quadratic form minus its chi-square threshold | 20 rotated positive-definite covariance matrices | `8.9e-15` |
-| Medcouple versus explicit kernel median | Sample sizes 8, 9, 40, 41, 200 | `0` |
+The tests preserve these counterexamples as regressions of the definitions.
+No numerical agreement with an external program was required to choose a fix.
 
-On three additional contaminated regression samples, the largest normalized
-MM score residual was `8.6e-9`; the largest S scale-equation residual was
-`8.4e-12`. Every MM refinement reduced its final bisquare loss from the S
-starting fit. These checks assess the equations and descent, not global
-minimality.
+## Assumptions and computational limits
 
-## Direct R comparison
+**GLM and nonlinear inference.** The Mallows covariance is conditional on the
+fixed design and model distribution. BY's corrected score is checked directly
+under Bernoulli probabilities. MT uses a bisquare criterion and an approximate
+spline correction; the unique, increasing transformation and source-theorem
+regularity conditions are not proved for every accepted tuning. In particular,
+the smooth-loss example in the source uses exponent 4, while ordinary bisquare
+uses exponent 3. `c>1` is only a necessary guard in this implementation.
+Nonlinear covariance assumes a correctly specified model with independent,
+symmetric, homoscedastic errors and a full-rank Jacobian. It is not a
+heteroscedasticity-robust covariance. See [GLMs](glm.md) and
+[nonlinear regression](regression.md#nonlinear-robust-regression).
 
-The separate comparison used **R 4.6.2**, **robustbase 0.99-7**,
-**rrcov 1.7-7** and **mrfDepth 1.0.17**. It evaluated the same input arrays in
-both languages, including `hbk`, `stackloss`, `starsCYG` and `wood`, plus
-symmetric, skewed, reflected, tied, constant and singleton samples for the
-adjusted boxplot. A seed does not produce identical random subsets across
-languages; deterministic fits or aligned definitions were used where possible.
+**PCA and robust mean tests.** ROBPCA is a documented computational variant
+using generic corrected MCD in its final stage; not every Appendix fitting
+and scale step is reproduced. Hotelling and MANOVA use approximate normal-model
+calibrations. The independent null experiments and exact binomial confidence
+intervals in the [multivariate guide](multivariate.md#numerical-limits-and-sources)
+show sampling uncertainty and a liberal Hotelling case. They do not establish
+uniform nominal level, power or robustness under arbitrary contamination.
 
-| Comparison | Observed result |
-| --- | --- |
-| LTS versus `ltsReg` on four datasets | Identical raw subsets; coefficient and scale discrepancies below `5e-15` after division by `max(1, max(abs(R result)))` |
-| Deterministic MCD versus `covMcd` and `CovMcd` on hbk, starsCYG and wood | Covariances agree within `7e-16` absolute; robust distances within `3e-14`; identical flags |
-| Classical distances versus `mahalanobis(X, colMeans(X), cov(X))` | Largest absolute discrepancy `1.1e-13` after using divisor `n−1` |
-| OGK versus `covOGK` on four datasets | Raw covariance discrepancies below `3.3e-13` on the normalized metric above; reweighted covariance agrees after accounting for the documented consistency factor |
-| MRCD versus `CovMrcd` on four datasets | Covariance discrepancies below `7.4e-7` on that normalized metric; R's small positive regularization floor differs from an exact zero weight |
-| Adjusted boxplot versus `adjboxStats` on 34 samples | Identical hinges, medians, observed whiskers and flagged values; some fences differ by up to `0.00154` because R approximates the medcouple |
-| Regression-map classes with MM fits on four datasets | Identical classifications with matched predictor-distance degrees of freedom; hbk has 61 regular, 4 good-leverage and 10 bad-leverage points |
-| MM covariance formula with identical residuals, scale and tuning | Largest absolute discrepancy below `3.5e-12` against `.vcov.avar1` |
-| SDO and adjusted-outlyingness flags on univariate, starsCYG and stackloss data | Identical flags for both detectors; values need not coincide under the documented MAD and tie conventions |
+**Outlyingness and depth.** Directional side-scale breakdown results require
+the source's continuous symmetric unimodal model; they describe 25% implosion
+and explosion breakdown of those scales. The log-scale cutoff is approximate,
+not an exact false-positive guarantee. Higher-dimensional depth searches can
+overestimate the exact depth, while finite outlyingness directions can
+underestimate a supremum. Bag boundaries use a finite angular grid and large
+samples use a subset. See [outliers](outliers.md) and [depth](depth.md).
 
-For the regression-map comparison, R's `lmrob` used exact Python tuning
-constants, five refined S candidates and 2,000 starts. Python used its default
-500 starts. The finite searches may select different S solutions. In hbk,
-initial S residuals differ although the S scales and final MM coefficients
-agree closely; the covariance formula uses those initial residuals, so the
-resulting standard errors need not be identical. Comparing the covariance
-formula with the **same** inputs separates this optimization difference from
-a formula error.
+**Covariance and regression conventions.** Finite-sample factors are empirical
+calibrations. MRCD's common-rho condition target applies to initial subsets in
+standardized coordinates, not every final covariance in original units.
+Multivariate MM tunes shape efficiency and regression MM tunes coefficient
+efficiency. Scale equations, fixed initial scale and normalized-loss ordering
+must be preserved. Finite MCD/MVE/S/MM/LTS searches can select local solutions.
+The audit found no demonstrated reason to change the existing covariance
+formulas; it did not certify every global optimum or breakdown theorem.
 
-For multivariate S on wood, Python found a scale of `0.03992495` versus
-`0.04065488` in the R run. A smaller scale is a better value of the S
-objective; it does not prove that either search found the global optimum.
-The resulting S and MM covariance matrices are therefore not required to
-match entry by entry. On the other reviewed datasets, the scales agree and
-matrix differences are consistent with iteration tolerances.
+**Plots.** Normal-reference chi-square contours describe model distances,
+not confidence regions for a center or exact finite-sample error rates.
+Singular covariances invalidate that reference and raise `ValueError` in the
+relevant distance/ellipse plots. Plotting an infinite outlyingness at a finite
+display position does not replace its mathematical value.
 
-## Decisions retained
+## Software references and reproducibility
 
-- **Exact versus rounded calibration.** MAD, Qn, Sn and bisquare constants
-  follow the documented definitions. Rounded R constants and stopping
-  tolerances explain small discrepancies in the univariate comparisons.
-- **Medcouple ties and approximation.** The kernel includes ties at the
-  median and averages the middle pair when there are an even number of
-  kernels. This can differ from robustbase, and mrfDepth's projection ties
-  can also change adjusted outlyingness. Existing exact-arithmetic checks
-  on stackloss validate the chosen definition independently of R.
-- **Quartiles.** Pn uses inverse empirical-CDF quartiles; adjusted boxplots
-  use Tukey hinges; adjusted outlyingness uses type-5 projection quartiles.
-  These are deliberate, separate conventions.
-- **OGK correction.** The reweighted covariance includes a normal-consistency
-  factor omitted by R's `covOGK`. Comparisons account for it rather than
-  removing it from the implementation.
-- **Regression scale.** S regression divides its scale equation by `n−p`,
-  including the intercept in `p`. Reweighted LTS uses its documented
-  `sum(weights)−1` denominator and empirical small-sample factors. These are
-  calibration conventions, not claims of exact unbiasedness under contamination.
-- **MRCD regularization.** The published common-rho rule is retained; its
-  condition target applies to initial subsets in standardized coordinates,
-  not as a universal bound on the final covariance in original units.
-- **Efficiency and breakdown.** Multivariate MM tunes shape efficiency;
-  regression MM tunes coefficient efficiency. The starting S-scale is held
-  fixed and final tuning must preserve the ordering of normalized losses.
-  The usual percentages are asymptotic statements under model assumptions,
-  not guarantees for every sample size and dimension.
-- **Searches and convergence.** Random starts and local refinements can find
-  different solutions. The MVE search is a covering-ellipsoid heuristic;
-  exact parity with a different heuristic is not an appropriate acceptance
-  criterion. Finite searches do not certify global optima.
+Frozen JSON fixtures in `tests/data` record outputs and package versions from
+R's robustbase, rrcov, mrfDepth and aplpack. Their provenance remains visible.
+They are supplementary software regression evidence and migration aids, not
+mathematical oracles. A difference is evaluated against the selected definition,
+assumptions and numerical convention. The [R migration guide](from-r.md)
+records corresponding interfaces and useful differences. Python tests require
+no R installation, and no R scripts are included.
 
-## Plot corrections and interpretation
-
-The review changed classical plotting covariances from divisor `n` to `n−1`,
-matching the documented sample covariance and R's classical distances.
-The theoretical checks verify the plotted ellipse boundary directly against
-the covariance used for flagging. The extra `n / (n−1)` inflation in
-robustbase 0.99-7's ellipse drawing routine is intentionally not reproduced.
-
-The regression distance cutoff uses the number of predictor columns, without
-an intercept column. This matches the dimension of the MCD distance; it can
-differ from `plot.lmrob`'s use of regression rank. Rows beyond both cutoffs
-are bad leverage points, not merely observations with high leverage.
-
-The chi-square contour is a normal-model reference. It is not a confidence
-region for the center or an exact finite-sample false-positive guarantee.
-Degenerate covariance matrices invalidate the usual chi-square calibration;
-a pseudoinverse alone does not resolve that issue. Outlyingness can be
-infinite when a projection scale is zero, in which case projection depth is
-zero. The graphic distinguishes that mathematical value from its finite
-display position.
-
-## Repeating the maintained checks
+The CI matrix covers Python 3.10–3.15 on Linux, Windows and macOS. Python 3.10
+also checks the minimum supported numerical dependencies. Optional pandas or
+array-API checks can be skipped when those optional dependencies are absent.
+Expected generic estimator-check failures are documented with their mathematical
+reason, and equivalent valid-data properties are tested where applicable.
 
 ```bash
 uv run pytest --cov
@@ -152,8 +127,6 @@ uv run ruff format --check .
 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 ```
 
-The documentation build executes the five plotting examples and renders their
-figures. The maintained tests check the coordinates, mathematical invariants,
-input handling and plotting interface. Coverage measures exercised code;
-it does not replace statistical validation. The separate R comparisons above
-are a record of this review and do not add an R runtime dependency to CI.
+The documentation build executes plotting examples. The final suite counts and
+cross-platform status belong to the run for the reviewed commit; this page does
+not reuse counts from an earlier implementation as evidence for later changes.

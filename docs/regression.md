@@ -1,13 +1,13 @@
-# Robust linear regression
+# Robust regression
 
-Robust estimators of linear regression coefficients, in
+Robust linear and nonlinear regression estimators, in
 `robustmodels.regression`.
 
 ## Choosing an estimator
 
 | Class | Needs | Random | Notes |
 | --- | --- | --- | --- |
-| `MMRegressor` | `n > p` | Yes | The default choice: 50% breakdown and 95% Gaussian efficiency, as R's `lmrob` |
+| `MMRegressor` | `n > p` | Yes | The default choice: 50% breakdown and 95% Gaussian efficiency under normal errors |
 | `LTSRegressor` | `n > p` | Yes | Least trimmed squares, then reweighted least squares; marks the observations it uses |
 | `SRegressor` | `n > p` | Yes | Minimizes a robust residual scale; 50% breakdown but only 29% efficiency |
 
@@ -131,9 +131,9 @@ not a regularization strength.
 ## Numerical limits and sources
 
 FAST-LTS takes two concentration steps from each random elemental start, then
-iterates the ten best to convergence. It does not certify a global optimum;
-on the classical datasets in the tests it matches robustbase's exhaustive
-search. The intercept is a column of ones, without the intercept adjustment
+iterates the ten best to convergence. Exhaustive small problems check the
+trimmed objective independently; the finite random search does not certify a
+global optimum. The intercept is a column of ones, without the intercept adjustment
 step of Rousseeuw & Van Driessen (2006), as in `ltsReg`'s default.
 
 For data in general position the raw estimator has breakdown point close to
@@ -146,13 +146,12 @@ example above), as in `ltsReg`.
 
 FAST-S refines every random start a few steps and the five best to
 convergence; refinement stops when the coefficients change by less than `1e-7`
-relative, as in `lmrob`. On hbk it finds a smaller S scale than `lmrob`'s
-default search, which refines two candidates. The S scale divides by `n - p`,
+relative. The number of starts and refined candidates affects the local
+solution selected. The S scale divides by `n - p`,
 as `lmrob`, to reduce small-sample bias, and is consistent at the normal model;
 like the LTS scale, it overestimates the error standard deviation when outliers
-are present. The bisquare constants are computed exactly (1.5476 for 50%
-breakdown, 4.6851 for 95% efficiency); `lmrob` rounds them, so scales differ by
-about `3e-6`.
+are present. The bisquare constants are computed from their defining normal expectations
+(about 1.5476 for 50% breakdown and 4.6851 for 95% efficiency).
 
 The MM-estimator keeps the S scale fixed and converges to a local minimum of
 its loss near the S fit. Its breakdown point is that of the S-estimator, and
@@ -165,6 +164,41 @@ Sources: [LTS](references.md#r84), [FAST-LTS](references.md#rvd06),
 [MM-estimators](references.md#y87), [the `n - p` scale](references.md#mmys19) and
 [MM standard errors](references.md#cdh03).
 
+## Nonlinear robust regression
+
+`NonlinearMRegressor(model, start)` fits `y = model(X, *params)` with Huber
+iteratively reweighted nonlinear least squares. Supply a callable that returns
+one finite value per row and a finite initial parameter vector. `params_`,
+`scale_`, `weights_`, `cov_params_` and `std_errors_` describe the final fit;
+`predict(X)` evaluates the fitted curve. `converged_` reports outer-loop
+convergence, and iteration exhaustion emits a `RuntimeWarning`.
+
+```pycon
+>>> from robustmodels.regression import NonlinearMRegressor
+>>> def decay(X, a, b):
+...     return a * np.exp(-b * X[:, 0])
+>>> rng = np.random.default_rng(0)
+>>> X = rng.uniform(0, 5, size=(80, 1))
+>>> y = decay(X, 10, 0.7) + rng.normal(scale=0.3, size=80)
+>>> y[:8] += 15
+>>> fit = NonlinearMRegressor(decay, [5, 1]).fit(X, y)
+>>> fit.params_.round(2).tolist()
+[10.29, 0.71]
+
+```
+
+The scale is the median absolute final residual divided by 0.6745, an
+approximation to the normal 0.75 quantile. The covariance uses Huber's
+asymptotic formula with the model Jacobian. It assumes a correctly specified
+model with independent, symmetric, homoscedastic errors and a full-column-rank
+Jacobian; it is not heteroscedasticity-robust. A rank-deficient final Jacobian
+raises `ValueError` because the parameters are not locally identifiable. The
+implementation is checked against an analytic exponential Jacobian.
+A zero median residual scale emits an exact-fit warning and returns zero
+covariance; standard errors in that degenerate case do not support ordinary
+inference. Robust residual weights protect against vertical outliers; leverage
+points and poor starting parameters can still dominate the fit.
+
 ## Reference
 
 ```{eval-rst}
@@ -175,5 +209,7 @@ Sources: [LTS](references.md#r84), [FAST-LTS](references.md#rvd06),
 .. autoclass:: LTSRegressor
    :members: fit, predict
 .. autoclass:: SRegressor
+   :members: fit, predict
+.. autoclass:: NonlinearMRegressor
    :members: fit, predict
 ```

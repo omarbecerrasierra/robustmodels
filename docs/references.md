@@ -7,11 +7,11 @@ certify this implementation. The method pages explain numerical conventions and 
 
 ## Method-to-source map
 
-| Public method | Scientific source | Implemented convention / R comparison |
+| Public method | Scientific source | Implemented convention and limitations |
 | --- | --- | --- |
 | `location.hodges_lehmann` | [HL63](#hl63) | Median of Walsh averages, including diagonal pairs; direct definition in R |
 | `location.trimmed_mean`, `location.winsorized_mean` | [TM63](#tm63) | `floor(n * proportion)` observations per tail; R mean / explicit clipping |
-| `location.m_location` | [H64](#h64), [BT74](#bt74) | Fixed scale, median start; Huber compared with `robustbase::huberM(k=1.5)`; bisquare checked by its score equation |
+| `location.m_location` | [H64](#h64), [BT74](#bt74) | Fixed scale, median start; Huber and bisquare checked by their score equations |
 | `location.tau_location`, `scale.tau_scale` | [MZ02](#mz02), [YZ88](#yz88) | One-step tau form used by OGK, not a general tau regression estimator; `scaleTau2(iter=1)` |
 | `scale.mad` | [H74](#h74), [CR92](#cr92) | Median center by default; exact normal quantile; finite correction optional; R `mad` uses rounded 1.4826 |
 | `scale.qn`, `scale.sn` | [RC93](#rc93), [CR92](#cr92) | Qn order statistic and Sn low/high medians; finite corrections on by default; compare raw and corrected values separately |
@@ -25,18 +25,37 @@ certify this implementation. The method pages explain numerical conventions and 
 | `covariance.mcd_small_sample` | [PVAW02](#pvaw02) | Empirical fitted finite-sample factors; not exact unbiasedness |
 | `covariance.MRCD` | [BRVV20](#brvv20) | Identity target in robustly standardized coordinates; common rho from algorithm step 3.4; `CovMrcd` |
 | `covariance.MVE` | [R85](#r85), [VAR09](#var09) | Random elemental ellipsoids and local refits; approximate search, not a certified global MVE; `CovMve` is diagnostic only |
-| `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw estimates also compared |
+| `covariance.OGK` | [GK72](#gk72), [MZ02](#mz02) | Adds a Gaussian consistency factor to reweighted scatter, unlike `covOGK`; raw and reweighted scatter are exposed separately |
 | `covariance.SEstimator` | [D87](#d87), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | FAST-S style subsampling and refinement; `CovSest(method="sfast")` |
-| `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` and matches `ltsReg` |
+| `regression.LTSRegressor` | [R84](#r84), [RVD06](#rvd06), [PVAW02](#pvaw02) | FAST-LTS without intercept adjustment; 0/1 reweighting at the 0.9875 normal quantile; reweighted scale divides by `sum(w) - 1` with empirical small-sample factors |
 | `outliers.StahelDonohoOutlyingness` | [S81](#s81), [D82](#d82), [Z03](#z03) | Directions normal to hyperplanes through `p` points (all when few, else random), consistent MAD, log cutoff as mrfDepth; `outlyingness`, `projdepth` |
 | `outliers.AdjustedOutlyingness` | [HVdV08](#hvdv08), [HV08](#hv08) | Adjusted boxplot whiskers with type-5 quartiles and the medcouple by definition; ties from rounding merged; log cutoff as mrfDepth; `adjOutl`, `sprojdepth` |
 | `regression.SRegressor` | [RY84](#ry84), [SBY06](#sby06), [MMYS19](#mmys19) | FAST-S with five candidates refined; M-scale divides by `n - p`; exact bisquare constant (`lmrob` rounds to 1.54764); `lmrob(method = "S")` |
 | `regression.MMRegressor` | [Y87](#y87), [SBY06](#sby06), [CDH03](#cdh03) | S scale fixed; bisquare at 95% coefficient efficiency (exact constant; `lmrob` rounds to 4.685061); covariance as `lmrob`'s `.vcov.avar1`, with the S breakdown in the scale term (`lmrob` fixes 1/2); `lmrob` default |
 | `covariance.MMEstimator` | [TT00](#tt00), [SBVAW06](#sbvaw06), [HRVV15](#hrvv15) | S scale held fixed, shape efficiency tuning, ordered normalized losses; `CovMMest(eff.shape=TRUE)` |
+| `covariance.StahelDonoho` | [S81](#s81), [D82](#d82), [MY95](#my95) | Huber-type weights `min(1, c^2 / r^2)` with `c^2` the 0.95 chi-square quantile; covariance scaled by the median distance; `CovSde` uses another weight function |
+| `multivariate.ROBPCA` | [HRVB05](#hrvb05) | Published h retained throughout; pair directions and univariate MCD; generic corrected final MCD is a computational variant; orthogonal cutoff by univariate MCD |
+| `multivariate.ProjectionPursuitPCA` | [LC85](#lc85), [CFO07](#cfo07) | Grid algorithm centered at the spatial median; MAD by default; `PCAgrid` |
+| `multivariate.RobustLDA`, `multivariate.RobustQDA` | [HVD04](#hvd04), [HF00](#hf00) | Pooled-observations MCD for the common covariance, one MCD per class for QDA; priors are class proportions; `Linda(method = "mcd")`, `QdaCov` |
+| `multivariate.hotelling_t2` | [WPRA02](#wpra02), [CH99](#ch99) | One sample; reweighted MCD with coverage 0.75 and the authors' fitted `d` and `q`; `T2.test(method = "mcd")` |
+| `multivariate.manova` | [TF10](#tf10) | Weights from the reweighted pooled MCD distances; null distribution simulated with the deterministic MCD; `Wilks.test(method = "mcd")` uses FAST-MCD |
+| `plots.pca_outlier_map` | [HRVB05](#hrvb05) | The fitted model's score and orthogonal distances and cutoffs |
+| `plots.scree_plot`, `plots.biplot` | [HRVB05](#hrvb05), [G71](#g71) | Robust variances with their cumulative share among the fitted components; scores with loadings multiplied by one common factor |
+| `plots.discriminant_plot` | [HVD04](#hvd04) | Predicted class on a grid of two variables with 97.5% robust tolerance ellipses per class; the reported error is the apparent error of the plotted observations |
+| `plots.distance_qq`, `plots.residual_qq`, `plots.residual_plot` | [RVZ90](#rvz90) | Plotting positions `(i - 0.5) / n`; unsquared distances against square roots of chi-square quantiles; residuals divided by the robust scale, cutoffs at 2.5 |
 | `plots.outlier_map` | [RVZ90](#rvz90) | Residuals divided by robust scale, cutoff 2.5; MCD predictor distances with chi-square degrees of freedom excluding the intercept |
 | `plots.distance_distance`, `plots.tolerance_ellipse` | [RVZ90](#rvz90), [RVD99](#rvd99) | Unsquared distances, classical sample covariance with divisor `n−1`; 97.5% normal-reference contours, not confidence regions for the center |
 | `plots.adjusted_boxplot` | [HV08](#hv08), [BHS04](#bhs04) | Tukey hinges and observed whisker endpoints as `adjboxStats`; the package's exact medcouple convention |
 | `plots.outlyingness_plot` | [S81](#s81), [HVdV08](#hvdv08) | The fitted detector's scores and cutoff; separate display positions for infinite scores |
+| `glm.MallowsLogisticRegression`, `glm.MallowsPoissonRegressor` | [CR01](#cr01) | Fisher-corrected Huber quasi-score; covariance and hat-weight conventions differ from robustbase |
+| `glm.BYLogisticRegression` | [BY96](#by96), [CH03](#ch03) | Corrected deviance; optional leverage trimming throughout fitting, rather than only at the start |
+| `glm.MTPoissonRegressor` | [VY14](#vy14) | MT-style bisquare criterion with approximate spline transformation; source-theorem regularity is conditional; numerical-cap inference unavailable |
+| `regression.NonlinearMRegressor` | [H81](#h81) | Huber IRWLS, median absolute final residual scale; asymptotic Jacobian covariance differs from `nlrob` |
+| `outliers.DirectionalOutlyingness` | [RRH18](#rrh18) | Side-specific scales; includes the odd median and uses unrounded Gaussian calibration |
+| `depth.halfspace_depth` | [T75](#t75), [RR96](#rr96) | Exact in one and two dimensions; sampled-hyperplane upper approximation above two |
+| `depth.regression_depth` | [RH99](#rh99), [RS98](#rs98) | Exact with one regressor; full direction enumeration for general-position data, or sampled approximation |
+| `depth.halfspace_median` | [RR98](#rr98) | Centroid of the deepest bivariate region; random subset when more than `max_samples` rows |
+| `depth.bagplot_stats`, `plots.bagplot` | [RRT99](#rrt99) | Interpolated central bag and inflated fence; degenerate bags supported |
 
 Diagnostic plots use the fitted estimates above; the
 [diagnostic guide](plots.md#sources-and-r-conventions) lists their differences
@@ -296,13 +315,143 @@ Maronna, R. A., Martin, R. D., Yohai, V. J. and Salibián-Barrera, M. (2019).
 *Robust Statistics: Theory and Methods (with R)*, 2nd edition. Wiley.
 [DOI](https://doi.org/10.1002/9781119214656). 
 
+(my95)=
+### MY95
+Maronna, R. A. and Yohai, V. J. (1995). *The Behavior of the Stahel-Donoho
+Robust Multivariate Estimator*. Journal of the American Statistical
+Association, **90**(429), 330–341.
+[DOI](https://doi.org/10.1080/01621459.1995.10476517).
+
+(hrvb05)=
+### HRVB05
+Hubert, M., Rousseeuw, P. J. and Vanden Branden, K. (2005). *ROBPCA: A New
+Approach to Robust Principal Component Analysis*. Technometrics, **47**(1),
+64–79. [DOI](https://doi.org/10.1198/004017004000000563).
+
+(lc85)=
+### LC85
+Li, G. and Chen, Z. (1985). *Projection-Pursuit Approach to Robust Dispersion
+Matrices and Principal Components: Primary Theory and Monte Carlo*. Journal of
+the American Statistical Association, **80**(391), 759–766.
+[DOI](https://doi.org/10.1080/01621459.1985.10478181).
+
+(cfo07)=
+### CFO07
+Croux, C., Filzmoser, P. and Oliveira, M. R. (2007). *Algorithms for
+Projection-Pursuit Robust Principal Component Analysis*. Chemometrics and
+Intelligent Laboratory Systems, **87**(2), 218–225.
+[DOI](https://doi.org/10.1016/j.chemolab.2007.01.004).
+
+(hvd04)=
+### HVD04
+Hubert, M. and Van Driessen, K. (2004). *Fast and Robust Discriminant
+Analysis*. Computational Statistics & Data Analysis, **45**(2), 301–320.
+[DOI](https://doi.org/10.1016/S0167-9473(02)00299-2).
+
+(hf00)=
+### HF00
+He, X. and Fung, W. K. (2000). *High Breakdown Estimation for Multiple
+Populations with Applications to Discriminant Analysis*. Journal of
+Multivariate Analysis, **72**(2), 151–162.
+[DOI](https://doi.org/10.1006/jmva.1999.1857).
+
+(wpra02)=
+### WPRA02
+Willems, G., Pison, G., Rousseeuw, P. J. and Van Aelst, S. (2002). *A Robust
+Hotelling Test*. Metrika, **55**, 125–138.
+[DOI](https://doi.org/10.1007/s001840200192).
+
+(tf10)=
+### TF10
+Todorov, V. and Filzmoser, P. (2010). *Robust Statistic for the One-Way
+MANOVA*. Computational Statistics & Data Analysis, **54**(1), 37–48.
+[DOI](https://doi.org/10.1016/j.csda.2009.08.015).
+
+(g71)=
+### G71
+Gabriel, K. R. (1971). *The Biplot Graphic Display of Matrices with Application
+to Principal Component Analysis*. Biometrika, **58**(3), 453–467.
+[DOI](https://doi.org/10.1093/biomet/58.3.453).
+
+(cr01)=
+### CR01
+Cantoni, E. and Ronchetti, E. (2001). *Robust Inference for Generalized Linear
+Models*. Journal of the American Statistical Association, **96**(455), 1022–1030.
+[Author manuscript and publication record](https://archive-ouverte.unige.ch/unige:22899).
+
+(by96)=
+### BY96
+Bianco, A. M. and Yohai, V. J. (1996). *Robust Estimation in the Logistic
+Regression Model*. In Robust Statistics, Data Analysis, and Computer Intensive
+Methods, Lecture Notes in Statistics **109**, 17–34. Springer.
+
+(ch03)=
+### CH03
+Croux, C. and Haesbroeck, G. (2003). *Implementing the Bianco and Yohai
+Estimator for Logistic Regression*. Computational Statistics & Data Analysis,
+**44**(1–2), 273–295. [DOI](https://doi.org/10.1016/S0167-9473(03)00042-2).
+
+(vy14)=
+### VY14
+Valdora, M. and Yohai, V. J. (2014). *Robust Estimators for Generalized Linear
+Models*. Journal of Statistical Planning and Inference, **146**, 31–48.
+[DOI](https://doi.org/10.1016/j.jspi.2013.09.016).
+
+(h81)=
+### H81
+Huber, P. J. (1981). *Robust Statistics*. Wiley.
+
+(rrh18)=
+### RRH18
+Rousseeuw, P. J., Raymaekers, J. and Hubert, M. (2018). *A Measure of Directional
+Outlyingness With Applications to Image Data and Video*. Journal of Computational
+and Graphical Statistics, **27**(2), 345–359.
+[DOI](https://doi.org/10.1080/10618600.2017.1366912).
+
+(t75)=
+### T75
+Tukey, J. W. (1975). *Mathematics and the Picturing of Data*. Proceedings of
+the International Congress of Mathematicians, **2**, 523–531.
+
+(rr96)=
+### RR96
+Rousseeuw, P. J. and Ruts, I. (1996). *Algorithm AS 307: Bivariate Location
+Depth*. Journal of the Royal Statistical Society: Series C, **45**(4), 516–526.
+[Author-hosted article](https://wis.kuleuven.be/statdatascience/robust/papers/1996/rousseeuwruts-algorithmbivariatelocationdepth-jrss.pdf).
+
+(rr98)=
+### RR98
+Rousseeuw, P. J. and Ruts, I. (1998). *Constructing the Bivariate Tukey Median*.
+Statistica Sinica, **8**(3), 827–839.
+[Journal article](https://www3.stat.sinica.edu.tw/statistica/oldpdf/A8n312.pdf).
+
+(rh99)=
+### RH99
+Rousseeuw, P. J. and Hubert, M. (1999). *Regression Depth*. Journal of the
+American Statistical Association, **94**(446), 388–402.
+
+(rs98)=
+### RS98
+Rousseeuw, P. J. and Struyf, A. (1998). *Computing Location Depth and Regression
+Depth in Higher Dimensions*. Statistics and Computing, **8**, 193–203.
+
+(rrt99)=
+### RRT99
+Rousseeuw, P. J., Ruts, I. and Tukey, J. W. (1999). *The Bagplot: A Bivariate
+Boxplot*. The American Statistician, **53**(4), 382–387.
+[Author publication record](https://www.uantwerpen.be/en/staff/ida-ruts/publications/).
+
 (r-software)=
 ## R software
 
 Package manuals and source identify the software conventions:
 [robustbase](https://cran.r-project.org/package=robustbase),
 [rrcov](https://cran.r-project.org/package=rrcov),
-[mrfDepth](https://cran.r-project.org/package=mrfDepth).
-The stored regression fixtures in `tests/data/r_reference.json` record the
-versions that produced those values. Agreement with these fixtures is limited
-to their data and settings, and does not imply universal agreement with R.
+[mrfDepth](https://cran.r-project.org/package=mrfDepth),
+[pcaPP](https://cran.r-project.org/package=pcaPP).
+The frozen JSON fixtures in `tests/data` record the versions that produced
+the reference values for the univariate, multivariate, GLM, nonlinear and
+depth comparisons. These fixtures retain their software provenance as
+supplementary regression checks. Mathematical definitions, assumptions and
+independent calculations determine acceptance; reproducing an external
+number is not a correctness requirement.
