@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-16)
 
 - Add Python 3.15 to the Linux, Windows and macOS CI matrix and compatibility metadata.
 - Audit the implemented formulas against primary theory and independent numerical

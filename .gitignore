@@ -16,3 +16,4 @@ htmlcov/
 docs/_build/
 .claude
 reports
+.mypy_cache
