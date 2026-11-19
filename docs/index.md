@@ -1,7 +1,7 @@
 # robustmodels
 
 Robust statistics for Python: estimators of location, scale, covariance and
-linear and nonlinear regression, generalized linear models, principal
+linear, rank-based and nonlinear regression, exact rank tests, generalized linear models, principal
 components, discriminant analysis, statistical depth and outlier detectors, that stay reliable when part of the data are outliers.
 
 ```bash
@@ -47,11 +47,12 @@ The covariance estimators are scikit-learn estimators:
 | [Location](location.md) | Hodges-Lehmann, M-estimators, tau location, trimmed and winsorized means |
 | [Scale and skewness](scale.md) | MAD, Qn, Sn, Pn, tau scale, M-scale, medcouple and tail weights |
 | [Method references](references.md) | Scientific sources, formulas and R conventions |
-| [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, Stahel-Donoho, S- and MM-estimators; outlier detection |
+| [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, Stahel-Donoho, Peña-Prieto (KSD), S- and MM-estimators; outlier detection |
 | [Multivariate methods](multivariate.md) | Robust PCA (ROBPCA, projection pursuit), LDA and QDA, Hotelling's T² and MANOVA |
 | [Regression](regression.md) | MM, S, LTS and nonlinear M regression |
+| [Rank-based methods](rank.md) | Rank regression (Wilcoxon R-estimator) and exact Wilcoxon tests with ties |
 | [Generalized linear models](glm.md) | Robust logistic and Poisson models, inference and numerical conventions |
-| [Depth](depth.md) | Halfspace and regression depth, Tukey median and bagplot |
+| [Depth](depth.md) | Halfspace depth (exact in any dimension) and regression depth, Tukey median and bagplot |
 | [Outlier detection](outliers.md) | Stahel-Donoho, adjusted and directional outlyingness; projection depth |
 | [Diagnostic plots](plots.md) | Regression and PCA outlier maps, quantile plots, distance-distance plots, tolerance ellipses, scree plots, biplots, classification regions, adjusted boxplots, bagplots and outlyingness |
 | [Validation](validation.md) | Definitions, pre-release checks and documented differences from R |
@@ -80,6 +81,7 @@ scale
 covariance
 multivariate
 regression
+rank
 glm
 depth
 outliers

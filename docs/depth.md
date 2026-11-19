@@ -5,7 +5,21 @@ smallest fraction of observations in a closed halfspace whose boundary passes
 through the query point. It is exact in one and two dimensions, including ties.
 Above two dimensions, it searches directions normal to sample hyperplanes and
 returns an approximation that can overestimate the exact depth. Supply
-`n_directions` and `random_state` to control that search.
+`n_directions` and `random_state` to control that search, or `exact=True` for
+the exact depth by the recursive algorithm of Dyckerhoff and Mozharovskyi
+(2016). It needs no general position and costs `O(n^(p-1) log n)` per point:
+the depths of all 200 points of a sample in three dimensions take about 6
+seconds on a laptop, and those of 60 points in four dimensions about 12.
+
+```pycon
+>>> import numpy as np
+>>> from robustmodels.depth import halfspace_depth
+>>> X3 = np.random.default_rng(1).normal(size=(30, 3))
+>>> exact = halfspace_depth(X3, exact=True)
+>>> bool(np.all(halfspace_depth(X3, random_state=0) >= exact))  # the search never underestimates
+True
+
+```
 
 `regression_depth` measures the smallest fraction of observations crossed when
 tilting a fitted regression plane to a vertical nonfit. It is exact with one
@@ -59,8 +73,15 @@ regions over a finite angular grid, so transformed bag vertices need not be
 exactly affine equivariant. Univariate halfspace depth compares represented
 values directly, so a distinct external point is not merged into the sample.
 Bivariate depth evaluates open angular cells after diagonal conditioning;
-independent rational-sign enumeration checks narrow-angle cases. Higher-
-dimensional projection and region calculations retain numerical tolerances.
+independent rational-sign enumeration checks narrow-angle cases. Opposite
+offsets from the query point, as when it lies between two observations, share
+one line angle, and lines closer than `1e-13` radians after the conditioning
+are taken as one. Version 0.2.0 compared separately rounded angles instead and
+could open a spurious cell: for the query `(0.5, 1.5)` between the observations
+`(-1, 0)` and `(2, 3)` of an integer sample it returned `2/9` instead of `3/9`.
+Exact depth in three or more dimensions is checked against linear-programming
+separation of every subset in small samples and against R's ddalpha.
+Projection and region calculations retain numerical tolerances.
 
 The bag interpolates both adjacent depth regions even when the inner one
 is a nonzero segment. An explicit tied five-point sample checks its diagonal
@@ -72,7 +93,8 @@ mathematical witnesses. The definition and the independent geometry checks
 determine correctness, including when external software differs.
 
 Sources are Tukey (1975), Rousseeuw and Ruts (1996, 1998), Rousseeuw and Hubert
-(1999), and Rousseeuw, Ruts and Tukey (1999); full citations follow.
+(1999), Rousseeuw, Ruts and Tukey (1999) and Dyckerhoff and Mozharovskyi (2016);
+full citations follow.
 
 ## Reference
 

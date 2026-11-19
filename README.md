@@ -22,16 +22,21 @@ compare summaries, estimate multivariate structure, and investigate unusual
 observations.
 
 - **Summarize a sample:** robust location, scale, skewness and tail-weight measures.
-- **Model multivariate data:** seven location and covariance estimators, including
-  regularized covariance for data with more variables than observations.
+- **Model multivariate data:** eight location and covariance estimators, including
+  regularized covariance for data with more variables than observations and
+  Peña–Prieto (KSD) directions for many variables.
 - **Reduce, classify and test:** robust principal components (ROBPCA and
   projection pursuit), linear and quadratic discriminant analysis, Hotelling's
   T² and one-way MANOVA.
 - **Detect outliers:** Stahel-Donoho, adjusted and directional outlyingness;
-  halfspace and regression depth, Tukey medians and bagplots.
+  halfspace depth (exact in any dimension) and regression depth, Tukey medians
+  and bagplots.
 - **Fit robust regressions:** MM, S and least trimmed squares estimators,
   resistant to vertical outliers and bad leverage points; nonlinear Huber
-  regression and robust logistic and Poisson generalized linear models.
+  regression, rank-based (Wilcoxon) regression and robust logistic and Poisson
+  generalized linear models.
+- **Test with ties:** exact Wilcoxon rank-sum and signed-rank tests conditional
+  on ties and zeros.
 - **Publish the diagnostics:** regression and PCA outlier maps, residual and quantile plots,
   distance-distance plots, tolerance ellipses, biplots, scree plots,
   classification regions, adjusted boxplots, bagplots and outlyingness plots with Matplotlib.
@@ -172,7 +177,9 @@ For nonlinear curves, use `NonlinearMRegressor(model, start)`; its
 explains starting values and standard errors. Binary and Poisson responses have
 [dedicated robust GLMs](https://omarbecerrasierra.github.io/robustmodels/glm.html).
 The [depth guide](https://omarbecerrasierra.github.io/robustmodels/depth.html)
-adds halfspace and regression depth, Tukey medians and a bagplot gallery.
+adds halfspace and regression depth, Tukey medians and a bagplot gallery, and the
+[rank guide](https://omarbecerrasierra.github.io/robustmodels/rank.html) rank
+regression and exact Wilcoxon tests with ties.
 
 ## Find robust principal components
 
@@ -235,12 +242,14 @@ explain the pre-release checks and differences from R.
 | Describe asymmetry | `scale.medcouple` | Robust skewness; `lmc` and `rmc` describe the tails. |
 | Estimate covariance when observations outnumber variables | `MCD` | Supports random or deterministic starts. |
 | Estimate covariance when variables outnumber observations | `MRCD` | Regularizes toward an identity target in standardized coordinates. |
-| Explore other multivariate approaches | `OGK`, `MVE`, `StahelDonoho`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
+| Explore other multivariate approaches | `OGK`, `MVE`, `StahelDonoho`, `PenaPrieto`, `SEstimator`, `MMEstimator` | Different robustness, efficiency and computational tradeoffs. |
 | Reduce dimension with outliers present | `ROBPCA` | Also for more variables than observations; `ProjectionPursuitPCA` needs no covariance. |
 | Classify when training data contain outliers | `RobustLDA` or `RobustQDA` | MCD-based; every class needs more observations than variables. |
 | Test mean vectors | `hotelling_t2`, `manova` | One sample or paired differences; two or more groups. |
 | Flag outliers in skewed multivariate data | `AdjustedOutlyingness` or `DirectionalOutlyingness` | Adjusted whiskers or side-specific robust scales; `StahelDonohoOutlyingness` for symmetric data. |
 | Fit a linear regression with outliers | `MMRegressor` | 50% breakdown and 95% efficiency; `LTSRegressor` and `SRegressor` are alternatives. |
+| Fit a linear regression with heavy-tailed errors | `RankRegressor` | No tuning constant; resists response outliers, not leverage points. |
+| Compare two samples or paired data with ties | `rank_sum_test`, `signed_rank_test` | Exact p-values conditional on the observed ties. |
 | Fit a nonlinear response curve | `NonlinearMRegressor` | Huber weights; supply the model callable and starting parameters. |
 | Classify two groups with robust logistic regression | `MallowsLogisticRegression` or `BYLogisticRegression` | Bounded residual influence; optional leverage protection. |
 | Fit nonnegative responses with a Poisson model | `MallowsPoissonRegressor` or `MTPoissonRegressor` | MT uses a bounded transformed loss and random starts. |
@@ -270,9 +279,10 @@ for sample-size requirements, parameters and worked examples.
 | --- | --- |
 | `robustmodels.location` | `hodges_lehmann`, `m_location`, `tau_location`, `trimmed_mean`, `winsorized_mean` |
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
-| `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `StahelDonoho`, `SEstimator`, `MMEstimator` |
+| `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `StahelDonoho`, `PenaPrieto`, `SEstimator`, `MMEstimator` |
 | `robustmodels.multivariate` | `ROBPCA`, `ProjectionPursuitPCA`, `RobustLDA`, `RobustQDA`, `hotelling_t2`, `manova` |
 | `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor`, `NonlinearMRegressor` |
+| `robustmodels.rank` | `RankRegressor`, `drop_test`, `rank_sum_test`, `signed_rank_test` |
 | `robustmodels.glm` | `MallowsLogisticRegression`, `MallowsPoissonRegressor`, `BYLogisticRegression`, `MTPoissonRegressor` |
 | `robustmodels.depth` | `halfspace_depth`, `halfspace_median`, `regression_depth`, `bagplot_stats` |
 | `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness`, `DirectionalOutlyingness` |

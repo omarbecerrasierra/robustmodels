@@ -52,7 +52,10 @@ certify this implementation. The method pages explain numerical conventions and 
 | `glm.MTPoissonRegressor` | [VY14](#vy14) | MT-style bisquare criterion with approximate spline transformation; source-theorem regularity is conditional; numerical-cap inference unavailable |
 | `regression.NonlinearMRegressor` | [H81](#h81) | Huber IRWLS, median absolute final residual scale; asymptotic Jacobian covariance differs from `nlrob` |
 | `outliers.DirectionalOutlyingness` | [RRH18](#rrh18) | Side-specific scales; includes the odd median and uses unrounded Gaussian calibration |
-| `depth.halfspace_depth` | [T75](#t75), [RR96](#rr96) | Exact in one and two dimensions; sampled-hyperplane upper approximation above two |
+| `depth.halfspace_depth` | [T75](#t75), [RR96](#rr96), [DM16](#dm16) | Exact in one and two dimensions; above two, sampled-hyperplane upper approximation or, with `exact=True`, the recursive exact algorithm |
+| `covariance.PenaPrieto` | [PP01](#pp01), [PP07](#pp07), [M17](#m17), [MMYS19](#mmys19) | KSD steps and constants of RobStatTM's `initPP`; covariance scaled by the 0.99 chi-square consistency factor, which RobStatTM omits |
+| `rank.RankRegressor`, `rank.drop_test` | [J72](#j72), [MH76](#mh76), [KSM87](#ksm87), [HM11](#hm11), [KM12](#km12) | Wilcoxon scores standardized as Rfit; exact linear-programming fit; exact 0.8 quantile for `tau`; Rfit's small-sample corrections; `rfit`, `drop.test` |
+| `rank.rank_sum_test`, `rank.signed_rank_test` | [SR86](#sr86), [HHWZ06](#hhwz06), [W45](#w45), [P59](#p59) | Exact conditional distribution of doubled midranks; two-sided by distance from the mean; `wilcox.exact`, coin exact tests |
 | `depth.regression_depth` | [RH99](#rh99), [RS98](#rs98) | Exact with one regressor; full direction enumeration for general-position data, or sampled approximation |
 | `depth.halfspace_median` | [RR98](#rr98) | Centroid of the deepest bivariate region; random subset when more than `max_samples` rows |
 | `depth.bagplot_stats`, `plots.bagplot` | [RRT99](#rrt99) | Interpolated central bag and inflated fence; degenerate bags supported |
@@ -441,6 +444,83 @@ Rousseeuw, P. J., Ruts, I. and Tukey, J. W. (1999). *The Bagplot: A Bivariate
 Boxplot*. The American Statistician, **53**(4), 382–387.
 [Author publication record](https://www.uantwerpen.be/en/staff/ida-ruts/publications/).
 
+(dm16)=
+### DM16
+Dyckerhoff, R. and Mozharovskyi, P. (2016). *Exact Computation of the
+Halfspace Depth*. Computational Statistics & Data Analysis, **98**, 19–30.
+[arXiv:1411.6927](https://arxiv.org/abs/1411.6927). Theorem 2 with `k = 1`
+gives the recursive algorithm.
+
+(pp01)=
+### PP01
+Peña, D. and Prieto, F. J. (2001). *Multivariate Outlier Detection and Robust
+Covariance Matrix Estimation*. Technometrics, **43**(3), 286–310.
+[DOI](https://doi.org/10.1198/004017001316975899). Directions of extreme
+kurtosis of the projections.
+
+(pp07)=
+### PP07
+Peña, D. and Prieto, F. J. (2007). *Combining Random and Specific Directions
+for Outlier Detection and Robust Estimation in High-Dimensional Multivariate
+Data*. Journal of Computational and Graphical Statistics, **16**(1), 228–254.
+[DOI](https://doi.org/10.1198/106186007X181236). The KSD procedure.
+
+(m17)=
+### M17
+Maronna, R. A. (2017). *Improving the Peña-Prieto "KSD" Procedure*.
+[arXiv:1708.03196](https://arxiv.org/abs/1708.03196). Observations as
+directions and more specific directions.
+
+(j72)=
+### J72
+Jaeckel, L. A. (1972). *Estimating Regression Coefficients by Minimizing the
+Dispersion of the Residuals*. The Annals of Mathematical Statistics, **43**(5),
+1449–1458.
+
+(mh76)=
+### MH76
+McKean, J. W. and Hettmansperger, T. P. (1976). *Tests of Hypotheses Based on
+Ranks in the General Linear Model*. Communications in Statistics – Theory and
+Methods, **5**(8), 693–709.
+
+(ksm87)=
+### KSM87
+Koul, H. L., Sievers, G. L. and McKean, J. W. (1987). *An Estimator of the
+Scale Parameter for the Rank Analysis of Linear Models under General Score
+Functions*. Scandinavian Journal of Statistics, **14**(2), 131–141.
+
+(hm11)=
+### HM11
+Hettmansperger, T. P. and McKean, J. W. (2011). *Robust Nonparametric
+Statistical Methods*, 2nd edition. CRC Press.
+
+(km12)=
+### KM12
+Kloke, J. D. and McKean, J. W. (2012). *Rfit: Rank-Based Estimation for Linear
+Models*. The R Journal, **4**(2), 57–64.
+
+(sr86)=
+### SR86
+Streitberg, B. and Röhmel, J. (1986). *Exact Distributions for Permutation and
+Rank Tests: An Introduction to Some Recently Published Algorithms*.
+Statistical Software Newsletter, **12**(1), 10–17.
+
+(hhwz06)=
+### HHWZ06
+Hothorn, T., Hornik, K., van de Wiel, M. A. and Zeileis, A. (2006). *A Lego
+System for Conditional Inference*. The American Statistician, **60**(3), 257–263.
+
+(w45)=
+### W45
+Wilcoxon, F. (1945). *Individual Comparisons by Ranking Methods*. Biometrics
+Bulletin, **1**(6), 80–83.
+
+(p59)=
+### P59
+Pratt, J. W. (1959). *Remarks on Zeros and Ties in the Wilcoxon Signed Rank
+Procedures*. Journal of the American Statistical Association, **54**(287),
+655–667.
+
 (r-software)=
 ## R software
 
@@ -448,10 +528,15 @@ Package manuals and source identify the software conventions:
 [robustbase](https://cran.r-project.org/package=robustbase),
 [rrcov](https://cran.r-project.org/package=rrcov),
 [mrfDepth](https://cran.r-project.org/package=mrfDepth),
-[pcaPP](https://cran.r-project.org/package=pcaPP).
+[pcaPP](https://cran.r-project.org/package=pcaPP),
+[ddalpha](https://cran.r-project.org/package=ddalpha),
+[RobStatTM](https://cran.r-project.org/package=RobStatTM),
+[Rfit](https://cran.r-project.org/package=Rfit),
+[exactRankTests](https://cran.r-project.org/package=exactRankTests),
+[coin](https://cran.r-project.org/package=coin).
 The frozen JSON fixtures in `tests/data` record the versions that produced
-the reference values for the univariate, multivariate, GLM, nonlinear and
-depth comparisons. These fixtures retain their software provenance as
+the reference values for the univariate, multivariate, GLM, nonlinear,
+depth and rank comparisons. These fixtures retain their software provenance as
 supplementary regression checks. Mathematical definitions, assumptions and
 independent calculations determine acceptance; reproducing an external
 number is not a correctness requirement.

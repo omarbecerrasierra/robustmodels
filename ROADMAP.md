@@ -29,18 +29,21 @@ Suggestions and use cases are welcome in
 - **Location:** Hodges–Lehmann, M, tau, trimmed and winsorized means.
 - **Scale, skewness and tail weight:** MAD, Qn, Sn, Pn, tau scale, M-scale,
   medcouple and its left and right versions.
-- **Covariance:** MCD (FAST-MCD and DetMCD), MRCD, MVE, OGK, Stahel–Donoho, S
-  and MM estimators.
+- **Covariance:** MCD (FAST-MCD and DetMCD), MRCD, MVE, OGK, Stahel–Donoho,
+  Peña–Prieto kurtosis and specific directions (KSD), S and MM estimators.
 - **Multivariate methods:** robust PCA (ROBPCA and projection pursuit), robust
   LDA and QDA, robust one-sample Hotelling's T² and one-way MANOVA.
 - **Regression:** least trimmed squares (FAST-LTS) with reweighting, and S and
   MM estimators (FAST-S), with standard errors and tests for MM; nonlinear
   Huber M regression.
+- **Rank-based methods:** rank regression with Wilcoxon scores (exact fit,
+  standard errors and the drop in dispersion test), and exact Wilcoxon rank-sum
+  and signed-rank tests conditional on ties and zeros.
 - **Generalized linear models:** Mallows logistic and Poisson, Bianco–Yohai
   logistic (including leverage trimming), and MT Poisson regression.
 - **Outlier detection and depth:** Stahel-Donoho, adjusted and directional
-  outlyingness, projection depth, halfspace and regression depth, the Tukey
-  median and the bagplot.
+  outlyingness, projection depth, halfspace depth (exact in any dimension) and
+  regression depth, the Tukey median and the bagplot.
 - **Diagnostics:** regression and PCA outlier maps, residual plots, quantile
   plots of residuals and robust distances, distance-distance plots, tolerance ellipses, scree
   plots, biplots, classification regions, adjusted boxplots, bagplots and outlyingness plots.
@@ -50,10 +53,7 @@ Suggestions and use cases are welcome in
 1. **Multivariate density estimation:** kernel density estimation with a full
    bandwidth matrix (plug-in and smoothed cross-validation), density
    derivatives, highest density regions and two-sample tests.
-2. **Depth and outlyingness:** Peña–Prieto projection directions and further
-   high-dimensional depth algorithms.
-3. **Rank-based methods:** rank regression and exact conditional tests with ties.
-4. **Shape-constrained estimation:** univariate log-concave density estimation
+2. **Shape-constrained estimation:** univariate log-concave density estimation
    and regression by antitonic score matching.
 
 ## Across all stages

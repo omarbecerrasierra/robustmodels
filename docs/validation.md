@@ -22,7 +22,9 @@ exercised code, not mathematical validity.
 | GLMs | Corrected conditional scores, sensitivities and sandwich variance | Direct Bernoulli/Poisson expectations, finite-difference derivatives, low-mean MT correction equations and numerical-cap cases |
 | PCA and classification | Published ROBPCA h, projection/orthogonal distances, normal discriminant scores | Actual subset-size checks, orthonormality, reconstruction, rotations, exact fits and direct normal densities |
 | Mean-vector tests | Robust T² with finite-moment F calibration; weighted Wilks statistic | Undefined-moment/singularity guards, preservation of original groups and bounded independent null simulations |
-| Depth and outlyingness | Closed halfspaces, regression separation, interpolated depth regions and directional side scales | Rational-sign halfplane enumeration, exact 1-D boundaries, exhaustive deletion with linear programming, tied segments and Gaussian quadrature |
+| Depth and outlyingness | Closed halfspaces, regression separation, interpolated depth regions and directional side scales | Rational-sign halfplane enumeration, exact 1-D boundaries, exhaustive deletion with linear programming, tied segments and Gaussian quadrature; exact depth in three and four dimensions against linear-programming separation of every subset |
+| High-dimensional covariance | KSD projection steps, Mahalanobis completion and chi-square consistency | Recovery of planted outliers, consistency on 4000 normal observations, affine equivariance with fixed draws, and RobStatTM's selected observations |
+| Rank methods | Jaeckel's dispersion as an L1 problem on pairwise differences; exact conditional distributions of doubled midranks | Enumeration of every assignment and sign pattern with ties and zeros, local optimality of the pairwise loss, the weighted median of pairwise slopes, equivariance, population values of `tau` and `tau_s`, and simulated coverage and test size |
 | Diagnostics | Fitted scores, distances, cutoffs, polygon boundaries and class counts | Coordinates, ellipse quadratic identities, observed endpoints, infinite-score display and Matplotlib interface |
 
 Scientific sources are linked in the [method-to-source map](references.md).
@@ -50,6 +52,11 @@ performed for this project and from assumptions that were not fully verified.
   `2/7`, rather than `3/7`. An additional 1000 narrow samples agreed with
   independent exact-sign enumeration; this is finite evidence, not a proof
   for all IEEE-754 inputs.
+- Bivariate halfspace depth gives opposite offsets one line angle. With
+  exact data and the query between two observations, separately rounded
+  angles could open a spurious cell in 0.2.0: 8 of 3000 midpoint queries of
+  small integer samples returned a depth one count too low. All 3000 now agree
+  with rational-sign enumeration.
 - Bag interpolation retains nonzero inner segments. The tied five-point
   example has the independently derived diagonal boundary `(13/6,13/6)`.
 - Safe pair and central averages prevent intermediate overflow in
@@ -106,7 +113,8 @@ display position does not replace its mathematical value.
 ## Software references and reproducibility
 
 Frozen JSON fixtures in `tests/data` record outputs and package versions from
-R's robustbase, rrcov, mrfDepth and aplpack. Their provenance remains visible.
+R's robustbase, rrcov, mrfDepth, aplpack, ddalpha, RobStatTM, Rfit,
+exactRankTests and coin. Their provenance remains visible.
 They are supplementary software regression evidence and migration aids, not
 mathematical oracles. A difference is evaluated against the selected definition,
 assumptions and numerical convention. The [R migration guide](from-r.md)

@@ -10,6 +10,7 @@ from . import (
     multivariate,
     outliers,
     plots,
+    rank,
     regression,
     scale,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "multivariate",
     "outliers",
     "plots",
+    "rank",
     "regression",
     "scale",
 ]

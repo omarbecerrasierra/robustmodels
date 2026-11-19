@@ -232,3 +232,81 @@ def test_narrow_bivariate_halfplanes_against_exact_rational_signs():
     assert halfspace_depth(X, [[0.0, 0.0]])[0] == best / len(X)
     # Halfspace depth is invariant under nonsingular coordinate scaling.
     assert halfspace_depth(X * [1, 1e14], [[0.0, 0.0]])[0] == best / len(X)
+
+
+def test_bivariate_depth_at_midpoints_by_exact_rational_signs():
+    """Opposite offsets (the query between two observations) must not open a spurious cell."""
+    from fractions import Fraction
+
+    def exact(X, z):
+        offsets = [(Fraction(a) - Fraction(z[0]), Fraction(b) - Fraction(z[1])) for a, b in X]
+        away = [v for v in offsets if v != (0, 0)]
+        best = len(away)
+        for a, b in away:  # normals of each offset, rotated infinitesimally either way
+            for sign in (1, -1):
+                for t in (Fraction(1, 10**12), -Fraction(1, 10**12)):
+                    u = (-b * sign + t * a, a * sign + t * b)
+                    best = min(best, sum(x * u[0] + y * u[1] >= 0 for x, y in away))
+        return (len(X) - len(away) + best) / len(X)
+
+    rng = np.random.default_rng(11)
+    for _ in range(300):
+        X = rng.integers(-3, 4, size=(9, 2)) * rng.choice([1, 0.5, 0.25])
+        i, j = rng.choice(9, 2, replace=False)
+        z = (X[i] + X[j]) / 2  # exact in binary
+        assert halfspace_depth(X, [z])[0] == exact(X, z)
+    # A case that 0.2.0 answered with 2/9.
+    X = [[-1, 0], [2, 2], [1, 2], [3, -1], [-2, 2], [-2, 3], [2, -1], [2, 3], [-2, -2]]
+    assert halfspace_depth(X, [[0.5, 1.5]])[0] == pytest.approx(3 / 9)
+
+
+def lp_depth(X, z):
+    """``n`` minus the largest set strictly on one side of a hyperplane through ``z``."""
+    from itertools import combinations
+
+    from scipy.optimize import linprog
+
+    A = np.asarray(X, float) - z
+    n, d = A.shape
+    candidates = np.flatnonzero(A.any(axis=1))
+    for k in range(len(candidates), 0, -1):
+        for subset in combinations(candidates, k):
+            fit = linprog(np.zeros(d), A[list(subset)], -np.ones(k), bounds=[(None, None)] * d)
+            if fit.status == 0:
+                return (n - k) / n
+    return 1.0
+
+
+@pytest.mark.parametrize("p", [3, 4])
+def test_exact_depth_by_linear_programming_separation(p):
+    rng = np.random.default_rng(p)
+    for trial in range(12):
+        X = rng.integers(-2, 3, size=(8, p)).astype(float) if trial % 2 else rng.normal(size=(8, p))
+        points = np.vstack([X[:2], X.mean(axis=0), rng.normal(size=(1, p)), [3 * np.ones(p)]])
+        expected = [lp_depth(X, z) for z in points]
+        np.testing.assert_allclose(halfspace_depth(X, points, exact=True), expected)
+
+
+def test_exact_depth_bounds_and_invariance():
+    rng = np.random.default_rng(12)
+    X = rng.normal(size=(25, 3))
+    exact = halfspace_depth(X, exact=True)
+    approximate = halfspace_depth(X, n_directions=300, random_state=0)
+    assert np.all(approximate >= exact)
+    A, b = rng.normal(size=(3, 3)), rng.normal(size=3)
+    np.testing.assert_array_equal(halfspace_depth(X @ A.T + b, exact=True), exact)
+    # Data on a plane: the depth is the bivariate depth within the plane.
+    plane = np.c_[X[:, :2], np.zeros(25)] @ A.T
+    np.testing.assert_array_equal(halfspace_depth(plane, exact=True), halfspace_depth(X[:, :2]))
+    # Data on a line: the univariate depth along it.
+    line = np.outer(np.r_[-2.0, -1, 0, 1, 3], [1.0, 2.0, -1.0])
+    np.testing.assert_array_equal(halfspace_depth(line, exact=True), [0.2, 0.4, 0.6, 0.4, 0.2])
+    # Ties and points that coincide with the query.
+    tied = np.repeat(X[:5], 3, axis=0)
+    assert halfspace_depth(tied, tied[:1], exact=True)[0] == pytest.approx(lp_depth(tied, tied[0]))
+
+
+@pytest.mark.parametrize("name", R["hdepth_exact"])
+def test_exact_depth_ddalpha_reference(name):
+    r = R["hdepth_exact"][name]
+    np.testing.assert_allclose(halfspace_depth(r["x"], r["z"], exact=True), r["depth"], atol=1e-12)

@@ -38,6 +38,7 @@ instead, so they can give different results. robustmodels also provides `scale.p
 | `rrcov::CovSde(X)` | `StahelDonoho().fit(X)` (another weight function) |
 | `rrcov::CovSest(X)` | `SEstimator().fit(X)` |
 | `rrcov::CovMMest(X)` | `MMEstimator().fit(X)` |
+| `RobStatTM:::initPP(X)` (KSD) | `PenaPrieto().fit(X)` (covariance scaled for consistency) |
 | `robustbase::h.alpha.n(alpha, n, p)` | `h_alpha_n(alpha, n, p)` |
 | `mahalanobis(X, center, cov)` | `model.mahalanobis(X)` |
 
@@ -97,11 +98,33 @@ differences, and the [regression guide](regression.md) for nonlinear covariance.
 | R | robustmodels |
 | --- | --- |
 | `mrfDepth::hdepth(X, Z)` | `depth.halfspace_depth(X, Z)` |
+| `ddalpha::depth.halfspace(Z, X, exact = TRUE)` | `depth.halfspace_depth(X, Z, exact=True)` |
 | `mrfDepth::rdepth(cbind(X, y), fits)` | `depth.regression_depth(X, y, coef, intercept)` for each fit |
 | `mrfDepth::hdepthmedian(X)` | `depth.halfspace_median(X)` (centroid convention) |
 | `mrfDepth::compBagplot(X)`, `aplpack::bagplot(X)` | `depth.bagplot_stats(X)`, `plots.bagplot(X)` |
 
 See the [depth guide](depth.md) for approximations and center conventions.
+
+## Rank-based methods
+
+| R | robustmodels |
+| --- | --- |
+| `Rfit::rfit(y ~ X)` | `rank.RankRegressor().fit(X, y)` |
+| `summary(rfit_fit)` | `summary()`, `std_errors_`, `t_values_`, `p_values_` |
+| `Rfit::drop.test(full, reduced)` | `rank.drop_test(full, reduced)` |
+| `exactRankTests::wilcox.exact(x, y)`, `coin::wilcox_test(..., distribution = "exact")` | `rank.rank_sum_test(x, y)` |
+| `exactRankTests::wilcox.exact(x)`, `wilcox.exact(x, y, paired = TRUE)` | `rank.signed_rank_test(x)`, `rank.signed_rank_test(x, y)` |
+| `coin::wilcoxsign_test(..., distribution = "exact")` | `rank.signed_rank_test(x, y, zero_method="pratt")` |
+
+| `rfit` result | `RankRegressor` attribute |
+| --- | --- |
+| `coefficients` | `intercept_`, `coef_` |
+| `tauhat`, `taushat` | `tau_`, `tau_s_` |
+| `D1`, `vcov(fit)` | `dispersion_`, `cov_params_` |
+
+The fit is the exact minimum of the dispersion, which Rfit approximates, and
+`tau` takes its quantile exactly; see the [rank guide](rank.md). The test
+statistics are `W` (Mann-Whitney form) and `V`, as `wilcox.exact`.
 
 ## Multivariate methods
 
