@@ -1,4 +1,6 @@
 import itertools
+import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -12,6 +14,7 @@ from robustmodels.regression import (
     _lts_small_sample,
     _positive_semidefinite,
     _s_scale,
+    mm_test,
 )
 from robustmodels.scale import _rho, _tuning_for_breakdown, _tuning_for_efficiency
 
@@ -318,3 +321,71 @@ def test_invalid_s_and_mm_parameters(estimator, message):
     X = np.random.default_rng(5).normal(size=(20, 2))
     with pytest.raises(ValueError, match=message):
         estimator.fit(X, X.sum(axis=1))
+
+
+ANOVA = json.loads((Path(__file__).parent / "data" / "r_reference.json").read_text())["anova"]
+
+
+@pytest.mark.parametrize("name", ANOVA)
+def test_mm_test_robustbase_reference(name):
+    """robustbase's anova.lmrob; its rounded bisquare constants move the fit by about 1e-6."""
+    r = ANOVA[name]
+    X, y = np.array(r["X"]), np.array(r["y"])
+    mm = MMRegressor(random_state=0).fit(X, y)
+    np.testing.assert_allclose(np.r_[mm.intercept_, mm.coef_], r["coef"], atol=1e-4)
+    for case in r["tests"]:
+        result = mm_test(mm, X, y, case["drop"], test=case["test"])
+        assert result.statistic == pytest.approx(case["statistic"], rel=2e-3)
+        assert result.pvalue == pytest.approx(case["pvalue"], rel=2e-2, abs=1e-12)
+        assert result.df == len(case["drop"])
+
+
+def test_mm_test_definitions_and_invariance():
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(70, 3))
+    y = 1 + X[:, 0] + rng.standard_t(3, size=70)
+    mm = MMRegressor(random_state=0).fit(X, y)
+    wald = mm_test(mm, X, y, [1, 2], test="wald")
+    block = mm.cov_params_[np.ix_([2, 3], [2, 3])]
+    assert wald.statistic == pytest.approx(mm.coef_[1:] @ np.linalg.solve(block, mm.coef_[1:]))
+    assert wald.pvalue == pytest.approx(stats.chi2.sf(wald.statistic, 2))
+    deviance = mm_test(mm, X, y, [1, 2])
+    # Invariant to the scale of the response.
+    scaled = MMRegressor(random_state=0).fit(X, 5 * y)
+    assert mm_test(scaled, X, 5 * y, [1, 2]).statistic == pytest.approx(deviance.statistic)
+    # A reduced model with no column at all (no intercept, every slope dropped).
+    origin = MMRegressor(fit_intercept=False, random_state=0).fit(X, y)
+    assert mm_test(origin, X, y, [0, 1, 2]).pvalue < 1e-4
+
+
+def test_mm_test_size_under_the_null():
+    """Monte Carlo: 5% tests with normal and t3 errors (n = 60, two slopes tested)."""
+    rng = np.random.default_rng(20261118)
+    reps, rejected = 150, {"wald": 0, "deviance": 0}
+    for k in range(reps):
+        X = rng.normal(size=(60, 3))
+        errors = rng.normal(size=60) if k % 2 else rng.standard_t(3, size=60)
+        y = X[:, 0] + errors
+        mm = MMRegressor(n_trials=100, random_state=k).fit(X, y)
+        for test in rejected:
+            rejected[test] += mm_test(mm, X, y, [1, 2], test=test).pvalue < 0.05
+    for count in rejected.values():
+        assert stats.binom.ppf(0.0005, reps, 0.05) <= count <= stats.binom.ppf(0.9995, reps, 0.05)
+
+
+def test_mm_test_input_checks():
+    rng = np.random.default_rng(4)
+    X = rng.normal(size=(30, 2))
+    y = X[:, 0] + rng.normal(size=30)
+    mm = MMRegressor(n_trials=50, random_state=0).fit(X, y)
+    with pytest.raises(ValueError, match="MMRegressor"):
+        mm_test(SRegressor(n_trials=50, random_state=0).fit(X, y), X, y, [0])
+    with pytest.raises(ValueError, match="test must be"):
+        mm_test(mm, X, y, [0], test="lrt")
+    with pytest.raises(ValueError, match="columns"):
+        mm_test(mm, X, y, [2])
+    exact = MMRegressor(n_trials=50, random_state=0).fit(X, 1 + X[:, 0])
+    with pytest.raises(ValueError, match="exact fit"):
+        mm_test(exact, X, 1 + X[:, 0], [1])
+    with pytest.raises(ValueError, match="not available"):
+        mm_test(exact, X, 1 + X[:, 0], [1], test="wald")

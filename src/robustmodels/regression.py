@@ -7,6 +7,7 @@ regression stores ``params_`` and evaluates the supplied model callable.
 """
 
 import warnings
+from typing import NamedTuple
 
 import numpy as np
 from scipy import optimize, stats
@@ -24,7 +25,7 @@ from .scale import (
     mad,
 )
 
-__all__ = ["LTSRegressor", "MMRegressor", "NonlinearMRegressor", "SRegressor"]
+__all__ = ["LTSRegressor", "MMRegressor", "NonlinearMRegressor", "SRegressor", "mm_test"]
 
 # Residuals with |r / scale| above this get weight 0 (2.5% total, 1.25% per tail).
 _CUTOFF = stats.norm.ppf(0.9875)
@@ -443,6 +444,100 @@ class MMRegressor(_RobustRegressor):
         check_is_fitted(self)
         table = _coefficient_table(self, feature_names, "t", self.t_values_)
         return f"{table}\nResidual scale: {self.scale_:.4g}"
+
+
+class MMTestResult(NamedTuple):
+    """Result of :func:`mm_test`."""
+
+    statistic: float
+    df: int
+    pvalue: float
+
+
+def mm_test(model, X, y, columns, *, test="deviance"):
+    """Test that some slopes of an MM regression are zero, as R's ``anova.lmrob``.
+
+    ``"wald"`` compares ``b' V^-1 b`` for the tested coefficients ``b``, with
+    ``V`` their block of ``cov_params_``, with a chi-square distribution on
+    ``q = len(columns)`` degrees of freedom. ``"deviance"`` is the robust
+    likelihood-ratio type test of Ronchetti (1982): the reduced model is refitted
+    as an M-estimator with the scale ``s`` of the full model, starting from the
+    full coefficients, and ``2 tau sum(rho(r_reduced / s) - rho(r_full / s))``, with
+    ``rho' = psi`` and ``tau = mean(psi'(r / s)) / mean(psi(r / s)^2)`` over the full
+    residuals, is also compared with a chi-square on ``q`` degrees of freedom. The
+    deviance test assumes symmetric errors of constant variance; the Wald test
+    inherits the heteroskedasticity-robust covariance. Both are asymptotic.
+
+    Parameters
+    ----------
+    model : fitted MMRegressor
+    X : array-like of shape (n_samples, n_features)
+        The data the model was fitted to.
+    y : array-like of shape (n_samples,)
+    columns : sequence of int
+        Columns of ``X`` whose slopes are zero under the hypothesis.
+    test : {"deviance", "wald"}, default "deviance"
+
+    Returns
+    -------
+    MMTestResult
+        ``statistic``, ``df`` and ``pvalue``.
+
+    References
+    ----------
+    Ronchetti, E. (1982). Robust testing in linear models: the infinitesimal
+    approach. PhD thesis, ETH Zürich.
+
+    Hampel, F. R., Ronchetti, E. M., Rousseeuw, P. J. and Stahel, W. A. (1986).
+    *Robust Statistics: The Approach Based on Influence Functions*, Section 7.3.
+    Wiley.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.regression import MMRegressor, mm_test
+    >>> rng = np.random.default_rng(0)
+    >>> X = rng.normal(size=(80, 3))
+    >>> y = 1 + 2 * X[:, 0] + rng.normal(size=80)
+    >>> y[:8] += 15  # outliers
+    >>> mm = MMRegressor(random_state=0).fit(X, y)
+    >>> round(mm_test(mm, X, y, [1, 2]).pvalue, 2), mm_test(mm, X, y, [0]).pvalue < 1e-10
+    (0.87, True)
+    """
+    check_is_fitted(model)
+    if not isinstance(model, MMRegressor):
+        raise ValueError("model must be a fitted MMRegressor")
+    if test not in ("deviance", "wald"):
+        raise ValueError(f"test must be one of ['deviance', 'wald'], got {test!r}")
+    X, y = validate_data(model, X, y, dtype=np.float64, y_numeric=True, reset=False)
+    columns = np.unique(np.asarray(columns, dtype=int))
+    p = X.shape[1]
+    if not columns.size or columns.min() < 0 or columns.max() >= p:
+        raise ValueError(f"columns must be a nonempty selection of 0..{p - 1}")
+    design = _design(X, model.fit_intercept)
+    coef = np.r_[model.intercept_, model.coef_] if model.fit_intercept else model.coef_
+    tested = columns + int(model.fit_intercept)
+    kept = np.setdiff1d(np.arange(design.shape[1]), tested)
+    if test == "wald":
+        block = model.cov_params_[np.ix_(tested, tested)]
+        if not np.isfinite(block).all():
+            raise ValueError("the covariance of the coefficients is not available")
+        statistic = float(coef[tested] @ np.linalg.solve(block, coef[tested]))
+    else:
+        if not model.scale_ > 0:
+            raise ValueError("the scale is 0 (exact fit): the deviance test is not defined")
+        c, scale = _tuning_for_efficiency(model.efficiency), model.scale_
+        full = (y - design @ coef) / scale
+        reduced = y / scale
+        if kept.size:
+            fit = _mm_steps(design[:, kept], y, coef[kept], scale, c, model.max_iter)[0]
+            reduced = (y - design[:, kept] @ fit) / scale
+        psi, dpsi, _ = _bisquare(full, c)
+        tau = np.mean(dpsi) / np.mean(psi**2)
+        loss = c**2 / 6 * (_rho(reduced, c).sum() - _rho(full, c).sum())
+        statistic = float(2 * tau * loss)
+    q = int(columns.size)
+    return MMTestResult(statistic, q, float(stats.chi2.sf(statistic, q)))
 
 
 class NonlinearMRegressor(RegressorMixin, BaseEstimator):
