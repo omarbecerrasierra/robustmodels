@@ -127,6 +127,35 @@ For a combined residual and leverage diagnostic, use
 [`plots.outlier_map`](plots.md#regression-outlier-map). It distinguishes
 vertical outliers from good and bad leverage, using a residual cutoff of 2.5.
 
+### Comparing fits
+
+Whether a conclusion depends on a few observations is often the question that
+matters. [`plots.coefficient_plot`](plots.md) draws the estimates and
+confidence intervals of several fits side by side, with least squares as the
+reference. Here eight observations with large values of the third variable
+make it look important to least squares; the robust fits agree that it is not.
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: coefficients
+   :include-source: true
+   :alt: Coefficient estimates with 95% intervals from MM, rank and score matching fits and least squares.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.rank import RankRegressor
+   from robustmodels.regression import MMRegressor
+   from robustmodels.shape import ScoreMatchingRegressor
+
+   rng = np.random.default_rng(4)
+   X = rng.normal(size=(150, 3))
+   y = 1 + X @ [2.0, -1.0, 0.0] + rng.standard_t(2, 150)
+   y[:8] += 25 * X[:8, 2]  # eight observations tie y to the third variable
+   fits = [MMRegressor().fit(X, y), RankRegressor().fit(X, y), ScoreMatchingRegressor().fit(X, y)]
+   plots.coefficient_plot(fits, labels=["MM", "Rank", "Score matching"], X=X, y=y,
+                          feature_names=["dose", "age", "site"])
+```
+
 ### Reproducibility
 
 FAST-LTS and FAST-S draw random starting subsets. Pass `random_state` to get

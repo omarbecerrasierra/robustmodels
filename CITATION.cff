@@ -6,8 +6,8 @@ authors:
   - given-names: Omar
     family-names: Becerra Sierra
     orcid: "https://orcid.org/0009-0004-6376-5649"
-version: 0.4.0
-date-released: "2026-11-18"
+version: 0.5.0
+date-released: "2026-11-19"
 doi: 10.5281/zenodo.24169655
 license: BSD-3-Clause
 repository-code: "https://github.com/omarbecerrasierra/robustmodels"
@@ -16,8 +16,9 @@ abstract: >-
   Robust estimators of univariate location and scale and of multivariate
   location and scatter, robust principal components, discriminant analysis, robust clustering,
   linear, rank-based and nonlinear regression, exact rank tests, robust
-  generalized linear models, depth, outlier detection and diagnostics,
-  with the scikit-learn estimator interface.
+  generalized linear models, depth, outlier detection, multivariate kernel
+  density estimation, log-concave densities, regression by antitonic score
+  matching and diagnostics, with the scikit-learn estimator interface.
 keywords:
   - robust statistics
   - outliers
@@ -26,3 +27,5 @@ keywords:
   - generalized linear models
   - statistical depth
   - rank-based methods
+  - kernel density estimation
+  - shape-constrained estimation

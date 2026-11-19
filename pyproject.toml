@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robustmodels"
-version = "0.4.0"
-description = "Robust statistics for Python: covariance, PCA, regression, GLMs, rank methods, clustering, depth and diagnostics."
+version = "0.5.0"
+description = "Robust statistics for Python: covariance, PCA, regression, GLMs, rank methods, clustering, depth, density estimation and diagnostics."
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -36,6 +36,11 @@ keywords = [
     "rank regression",
     "robust clustering",
     "tclust",
+    "kernel density estimation",
+    "bandwidth matrix",
+    "highest density regions",
+    "log-concave density",
+    "score matching",
     "Wilcoxon test",
     "bagplot",
     "outlier detection",

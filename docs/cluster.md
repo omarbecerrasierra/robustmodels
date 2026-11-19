@@ -69,6 +69,32 @@ than every retained training observation.
 - **`n_init`** random starts (500 by default) are improved by concentration
   steps; the search returns a local maximum, so keep many starts.
 
+The classification trimmed likelihood curves (García-Escudero et al. 2011),
+R's `ctlcurves`, guide both choices: they draw `objective_` against `alpha`
+for each number of clusters. Choose the smallest `k` whose curve is close to
+that of `k + 1`, and the smallest `alpha` from which they stay close. Here the
+curves for 3 and 4 clusters merge from `alpha = 0.04`: three clusters, with
+about 5% of noise.
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: ctlcurves
+   :include-source: true
+   :alt: Trimmed likelihood against the trimming level for one to four clusters.
+
+   import numpy as np
+   from robustmodels import plots
+
+   rng = np.random.default_rng(4)
+   X = np.vstack([
+       rng.multivariate_normal([0, 0], np.eye(2), 100),
+       rng.multivariate_normal([5, 5], [[4, 0], [0, 0.3]], 80),
+       rng.multivariate_normal([-4, 6], [[1, 0.8], [0.8, 1]], 60),
+       rng.uniform(-10, 12, (15, 2)),
+   ])
+   plots.ctl_curves(X, n_init=100, random_state=0)
+```
+
 ## Numerical checks and sources
 
 The eigenvalue restriction is the optimal truncation of Fritz,

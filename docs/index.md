@@ -2,7 +2,8 @@
 
 Robust statistics for Python: estimators of location, scale, covariance and
 linear, rank-based and nonlinear regression, exact rank tests, generalized linear models, principal
-components, discriminant analysis, robust clustering, statistical depth and outlier detectors, that stay reliable when part of the data are outliers.
+components, discriminant analysis, robust clustering, statistical depth and outlier detectors, that stay reliable when part of the data are outliers,
+with multivariate kernel density estimation and shape-constrained estimators.
 
 ```bash
 pip install robustmodels
@@ -50,12 +51,14 @@ The covariance estimators are scikit-learn estimators:
 | [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, Stahel-Donoho, Peña-Prieto (KSD), S- and MM-estimators; outlier detection |
 | [Multivariate methods](multivariate.md) | Robust PCA (ROBPCA, projection pursuit), LDA and QDA, Hotelling's T² and MANOVA |
 | [Robust clustering](cluster.md) | TCLUST and trimmed k-means |
+| [Density estimation](density.md) | Kernel density estimation with a full bandwidth matrix, density derivatives, highest density regions and a two-sample test |
+| [Shape-constrained estimation](shape.md) | Log-concave density estimation and regression by antitonic score matching |
 | [Regression](regression.md) | MM, S, LTS and nonlinear M regression |
 | [Rank-based methods](rank.md) | Rank regression (Wilcoxon R-estimator) and exact Wilcoxon tests with ties |
 | [Generalized linear models](glm.md) | Robust logistic and Poisson models, inference and numerical conventions |
 | [Depth](depth.md) | Halfspace depth (exact in any dimension) and regression depth, Tukey median and bagplot |
 | [Outlier detection](outliers.md) | Stahel-Donoho, adjusted and directional outlyingness; projection depth |
-| [Diagnostic plots](plots.md) | Regression and PCA outlier maps, quantile plots, distance-distance plots, tolerance ellipses, scree plots, biplots, classification regions, adjusted boxplots, bagplots and outlyingness |
+| [Diagnostic plots](plots.md) | Regression and PCA outlier maps, quantile plots, distance-distance plots, tolerance ellipses, scree plots, biplots, classification regions, adjusted boxplots, bagplots, outlyingness, highest density regions, log-concave densities, antitonic scores, coefficient comparisons, depth-depth plots and trimmed likelihood curves |
 | [Validation](validation.md) | Definitions, pre-release checks and documented differences from R |
 
 Each page explains how to choose and use the estimators, then documents every
@@ -82,6 +85,8 @@ scale
 covariance
 multivariate
 cluster
+density
+shape
 regression
 rank
 glm
