@@ -26,6 +26,8 @@ exercised code, not mathematical validity.
 | High-dimensional covariance | KSD projection steps, Mahalanobis completion and chi-square consistency | Recovery of planted outliers, consistency on 4000 normal observations, affine equivariance with fixed draws, and RobStatTM's selected observations |
 | Robust tests and clustering | Robust deviance and Wald statistics; trimmed classification likelihood with restricted eigenvalues | Simulated 5% size with normal and t3 errors; brute-force eigenvalue truncation, fixed-point assignment and trimmed k-means nearest centers |
 | Rank methods | Jaeckel's dispersion as an L1 problem on pairwise differences; exact conditional distributions of doubled midranks | Enumeration of every assignment and sign pattern with ties and zeros, local optimality of the pairwise loss, the weighted median of pairwise slopes, equivariance, population values of `tau` and `tau_s`, and simulated coverage and test size |
+| Density estimation | Normal-kernel estimate; plug-in AMISE and smoothed cross-validation criteria with a scalar pilot; highest density levels; integrated squared difference of two estimates | Hermite polynomials in one dimension, exact Gauss–Hermite quadrature of the moments of quadratic forms, unit integral, finite-difference derivatives, grid integral of the test statistic, affine equivariance of the selectors, simulated test size |
+| Shape-constrained estimation | Log-concave likelihood and its characterization; antitonic projection of the kernel score | Concavity, no improving kink, unit integral and the sample mean, quadrature of the linear-exponential integrals; decreasing and odd score, estimating equation, regression and scale equivariance, simulated efficiency and interval coverage |
 | Diagnostics | Fitted scores, distances, cutoffs, polygon boundaries and class counts | Coordinates, ellipse quadratic identities, observed endpoints, infinite-score display and Matplotlib interface |
 
 Scientific sources are linked in the [method-to-source map](references.md).
@@ -105,6 +107,31 @@ must be preserved. Finite MCD/MVE/S/MM/LTS searches can select local solutions.
 The audit found no demonstrated reason to change the existing covariance
 formulas; it did not certify every global optimum or breakdown theorem.
 
+**Density estimation and shape constraints.** The bandwidth selectors
+minimize estimates of the integrated squared error of a smooth density; they
+do not resist outliers, which get their own bumps. `kde_test` relies on an
+asymptotic normal approximation and is conservative: with two normal samples
+of 100 or 300 observations in two variables it rejected 1.5% and 0.9% of
+1000 simulated tests at the 5% level (3.6% and 3.2% at 10%), as R's ks.
+`LogConcaveDensity` assumes log-concavity; multimodal or heavy-tailed data
+violate it. `ScoreMatchingRegressor` estimates the score from the same
+residuals it fits, without the sample splitting of its theory. In 400
+simulated samples of 200 observations with two normal predictors, the mean
+squared error of a slope, times `n`, was:
+
+| Errors | Least squares | LAD | MM | Score matching | Coverage of its 95% interval |
+| --- | --- | --- | --- | --- | --- |
+| Normal | 1.12 | 1.77 | 1.21 | 1.20 | 96.0% |
+| t3 | 3.00 | 1.85 | 1.60 | 1.62 | 95.0% |
+| Cauchy | 7 × 10⁵ | 2.89 | 3.27 | 2.74 | 95.0% |
+| Laplace | 2.19 | 1.29 | 1.70 | 1.46 | 95.3% |
+| 10% N(0, 100) contamination | 10.80 | 2.16 | 1.49 | 1.73 | 95.0% |
+
+It was close to the best fit in each case without choosing a loss; with
+Laplace errors least absolute deviations, the maximum likelihood estimate,
+remained better at this sample size. See [density](density.md) and
+[shape-constrained estimation](shape.md).
+
 **Plots.** Normal-reference chi-square contours describe model distances,
 not confidence regions for a center or exact finite-sample error rates.
 Singular covariances invalidate that reference and raise `ValueError` in the
@@ -115,7 +142,7 @@ display position does not replace its mathematical value.
 
 Frozen JSON fixtures in `tests/data` record outputs and package versions from
 R's robustbase, rrcov, mrfDepth, aplpack, ddalpha, RobStatTM, Rfit,
-exactRankTests, coin and tclust. Their provenance remains visible.
+exactRankTests, coin, tclust, ks, logcondens and asm. Their provenance remains visible.
 They are supplementary software regression evidence and migration aids, not
 mathematical oracles. A difference is evaluated against the selected definition,
 assumptions and numerical convention. The [R migration guide](from-r.md)

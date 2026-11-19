@@ -41,6 +41,11 @@ Suggestions and use cases are welcome in
   and exact Wilcoxon rank-sum
   and signed-rank tests conditional on ties and zeros.
 - **Robust clustering:** TCLUST and trimmed k-means.
+- **Multivariate density estimation:** kernel density estimation with a full
+  bandwidth matrix (plug-in and smoothed cross-validation), density
+  derivatives, highest density regions and a two-sample test.
+- **Shape-constrained estimation:** univariate log-concave density estimation
+  and regression by antitonic score matching.
 - **Generalized linear models:** Mallows logistic and Poisson, Bianco–Yohai
   logistic (including leverage trimming), and MT Poisson regression.
 - **Outlier detection and depth:** Stahel-Donoho, adjusted and directional
@@ -48,15 +53,15 @@ Suggestions and use cases are welcome in
   regression depth, the Tukey median and the bagplot.
 - **Diagnostics:** regression and PCA outlier maps, residual plots, quantile
   plots of residuals and robust distances, distance-distance plots, tolerance ellipses, scree
-  plots, biplots, classification regions, robust clusters, adjusted boxplots, bagplots and outlyingness plots.
+  plots, biplots, classification regions, robust clusters, adjusted boxplots, bagplots, outlyingness plots,
+  highest density regions, log-concave densities, antitonic scores, coefficient
+  comparisons, depth-depth plots and trimmed likelihood curves.
 
 ## Later stages
 
-1. **Multivariate density estimation:** kernel density estimation with a full
-   bandwidth matrix (plug-in and smoothed cross-validation), density
-   derivatives, highest density regions and two-sample tests.
-2. **Shape-constrained estimation:** univariate log-concave density estimation
-   and regression by antitonic score matching.
+The planned stages are available. The next ones will be chosen from the
+use cases and suggestions in
+[Issues](https://github.com/omarbecerrasierra/robustmodels/issues).
 
 ## Across all stages
 

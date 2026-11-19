@@ -162,6 +162,7 @@ statistic and p-value can differ; see the
 | `tclust::tclust(X, k, alpha)` | `cluster.TClust(k, alpha=alpha).fit(X)` |
 | `tclust::tkmeans(X, k, alpha)` | `cluster.TClust(k, alpha=alpha, restr_factor=1, equal_weights=True).fit(X)` |
 | `plot(tclust_fit)` | `plots.cluster_plot(model, X)` |
+| `plot(tclust::ctlcurves(X))` | `plots.ctl_curves(X)` |
 
 | `tclust` result | `TClust` attribute |
 | --- | --- |
@@ -171,6 +172,39 @@ statistic and p-value can differ; see the
 
 The `restr = "deter"` and `"GPCM"` restrictions, `opt = "MIXT"` and
 `ctlcurves` are not implemented.
+
+## Density estimation
+
+| R | robustmodels |
+| --- | --- |
+| `ks::Hpi(X, pilot = "dscalar", deriv.order = r)` | `density.plugin_bandwidth(X, deriv_order=r)` |
+| `ks::Hscv(X, pilot = "dscalar", deriv.order = r)` | `density.scv_bandwidth(X, deriv_order=r)` |
+| `ks::kde(X)`, `predict(fhat, x = Y)` | `density.KernelDensity().fit(X)`, `np.exp(model.score_samples(Y))` |
+| `ks::kdde(X, deriv.order = 1)` | `density.KernelDensity(deriv_order=1).fit(X).gradient(Y)` |
+| `ks::kdde(X, deriv.order = 2)` | `density.KernelDensity(deriv_order=2).fit(X).hessian(Y)` |
+| `ks::contourLevels(fhat, cont = 100 * p)` | `model.hdr_level(p)` |
+| `ks::kde.test(X1, X2)` | `density.kde_test(X1, X2)` |
+| `plot(fhat, display = "filled.contour")` | `plots.hdr_plot(model)` |
+
+ks bins large samples and uses the SAMSE pilot for the density of two
+variables by default; see the
+[density guide](density.md#numerical-checks-and-sources) for these and the
+other differences.
+
+## Shape-constrained estimation
+
+| R | robustmodels |
+| --- | --- |
+| `logcondens::logConDens(x, smoothed = FALSE)` | `shape.LogConcaveDensity().fit(x)` |
+| `evaluateLogConDens(t, fit)` | `model.score_samples(t)`, `model.cdf(t)` |
+| `plot(fit)` | `plots.log_concave_plot(model)` |
+| `asm::asm(y ~ X)` | `shape.ScoreMatchingRegressor().fit(X, y)` |
+| `asm::asm(y ~ X, symmetric = FALSE, intercept.selection = "median")` | `shape.ScoreMatchingRegressor(symmetric=False).fit(X, y)` |
+| `summary(asm_fit)`, `plot(asm_fit, which = 3)` | `model.summary()`, `plots.score_plot(model, X, y)` |
+
+logcondens's smoothed estimate is not implemented. asm's default intercept
+for `symmetric = FALSE` is the mean of the residuals; robustmodels uses the
+median.
 
 ## Diagnostic plots
 

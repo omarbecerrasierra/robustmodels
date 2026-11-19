@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.0 (2026-11-19)
+
+- Add `density`: `KernelDensity`, kernel density estimation with a normal
+  kernel and a full bandwidth matrix, with its gradient, Hessian and highest
+  density levels; the plug-in and smoothed cross-validation bandwidth
+  selectors `plugin_bandwidth` and `scv_bandwidth`, for the density or its
+  first or second derivative; and `kde_test`, a two-sample test of equal
+  densities in any dimension.
+- Add `shape`: `LogConcaveDensity`, the maximum likelihood estimate of a
+  univariate log-concave density, and `ScoreMatchingRegressor`, linear
+  regression with a convex loss estimated by antitonic score matching, with
+  standard errors and `summary()`.
+- Add `plots.hdr_plot`, `plots.log_concave_plot` and `plots.score_plot`.
+- Add `plots.coefficient_plot` (estimates and intervals of several fits, with
+  least squares as reference), `plots.dd_plot` (depth-depth plot of two samples)
+  and `plots.ctl_curves` (trimmed likelihood curves for choosing the number of
+  clusters and the trimming level, as R's `ctlcurves`).
+- Plot layout: the legends of `tolerance_ellipse`, `bagplot` and
+  `discriminant_plot` move under the axes instead of covering the data;
+  `distance_distance` leaves room for its labels; `adjusted_boxplot` shows each
+  medcouple under its box name; `bagplot` labels its axes x₁ and x₂, as the
+  other plots.
+- `rank.RankRegressor` and the new regressor share one least absolute
+  deviations solver (the dual linear program).
+
 ## 0.4.0 (2026-11-18)
 
 - Add `cluster.TClust`: robust clustering by trimming with eigenvalue

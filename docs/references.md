@@ -59,6 +59,16 @@ certify this implementation. The method pages explain numerical conventions and 
 | `regression.mm_test` | [R82](#r82), [HRRS86](#hrrs86) | Reduced M-fit with the full scale, `anova.lmrob` (`test = "Deviance"` or `"Wald"`) |
 | `cluster.TClust` | [GGMM08](#ggmm08), [FGM12](#fgm12), [FGM13](#fgm13), [CGM97](#cgm97) | Hard assignment, eigenvalue restriction by optimal truncation, tclust's starts and concentration steps |
 | `plots.cluster_plot` | [FGM12](#fgm12) | Clusters, trimmed observations and 97.5% normal ellipses in two variables, as `plot.tclust` |
+| `density.KernelDensity` | [WJ93](#wj93), [CDW11](#cdw11), [H96](#h96) | Normal kernel with a full bandwidth matrix; derivatives in closed form; highest density levels by quantiles of the estimate at the observations, as `ks::contourLevels` |
+| `density.plugin_bandwidth`, `density.scv_bandwidth` | [CD10](#cd10), [DH05](#dh05), [CD11](#cd11), [CD13](#cd13), [CD15](#cd15), [H96b](#h96b), [MP92](#mp92) | `dscalar` pilot on sphered data in two stages; normal derivative functionals from cumulants of quadratic forms, without binning; `Hpi` and `Hscv` with `pilot = "dscalar"` |
+| `density.kde_test` | [DGS12](#dgs12) | Bandwidths `h^2 S` minimizing the AMSE of each `psi_0`; exact density gradient at the sample means; `kde.test` |
+| `plots.coefficient_plot` | — | Estimates with normal-quantile intervals from each model's `std_errors_`; least squares with classical standard errors as reference |
+| `plots.dd_plot` | [LPS99](#lps99) | Halfspace depth in each sample of every pooled observation |
+| `plots.ctl_curves` | [GGMM11](#ggmm11) | `objective_` of `TClust` over a grid of `k` and `alpha`, R's `ctlcurves` defaults (`restr_factor = 50`) |
+| `plots.hdr_plot` | [H96](#h96) | Highest density regions filled inside their contours (two variables) or shaded under the curve (one) |
+| `shape.LogConcaveDensity` | [W02](#w02), [PWM07](#pwm07), [DR09](#dr09), [DHR07](#dhr07) | Active set algorithm with Newton steps at the knots, as `logcondens::activeSetLogCon`; the smoothed estimate is not implemented |
+| `plots.log_concave_plot` | [DR11](#dr11) | Density over a weighted histogram, or log density, with the knots |
+| `shape.ScoreMatchingRegressor`, `plots.score_plot` | [FKXS24](#fkxs24), [W94](#w94) | LAD pilot, `bw.nrd0` normal kernel density binned on 2^15 points, isotonic slopes of `J` on `max(3000, 2n)` quantiles, two passes; `asm` |
 | `rank.rank_sum_test`, `rank.signed_rank_test` | [SR86](#sr86), [HHWZ06](#hhwz06), [W45](#w45), [P59](#p59) | Exact conditional distribution of doubled midranks; two-sided by distance from the mean; `wilcox.exact`, coin exact tests |
 | `depth.regression_depth` | [RH99](#rh99), [RS98](#rs98) | Exact with one regressor; full direction enumeration for general-position data, or sampled approximation |
 | `depth.halfspace_median` | [RR98](#rr98) | Centroid of the deepest bivariate region; random subset when more than `max_samples` rows |
@@ -560,6 +570,134 @@ Cuesta-Albertos, J. A., Gordaliza, A. and Matrán, C. (1997). *Trimmed
 k-Means: An Attempt to Robustify Quantizers*. The Annals of Statistics,
 **25**(2), 553–576.
 
+(wj93)=
+### WJ93
+Wand, M. P. and Jones, M. C. (1993). *Comparison of Smoothing
+Parameterizations in Bivariate Kernel Density Estimation*. Journal of the
+American Statistical Association, **88**(422), 520–528.
+[DOI](https://doi.org/10.1080/01621459.1993.10476303).
+
+(cd10)=
+### CD10
+Chacón, J. E. and Duong, T. (2010). *Multivariate Plug-in Bandwidth Selection
+with Unconstrained Pilot Bandwidth Matrices*. Test, **19**(2), 375–398.
+[DOI](https://doi.org/10.1007/s11749-009-0168-4).
+
+(cd11)=
+### CD11
+Chacón, J. E. and Duong, T. (2011). *Unconstrained Pilot Selectors for
+Smoothed Cross-Validation*. Australian & New Zealand Journal of Statistics,
+**53**(3), 331–351. [DOI](https://doi.org/10.1111/j.1467-842X.2011.00639.x).
+
+(cd13)=
+### CD13
+Chacón, J. E. and Duong, T. (2013). *Data-Driven Density Derivative
+Estimation, with Applications to Nonparametric Clustering and Bump Hunting*.
+Electronic Journal of Statistics, **7**, 499–532.
+[DOI](https://doi.org/10.1214/13-EJS781). The scalar (`dscalar`) pilot.
+
+(cd15)=
+### CD15
+Chacón, J. E. and Duong, T. (2015). *Efficient Recursive Algorithms for
+Functionals Based on Higher Order Derivatives of the Multivariate Gaussian
+Density*. Statistics and Computing, **25**(5), 959–974.
+[DOI](https://doi.org/10.1007/s11222-014-9465-1).
+
+(cdw11)=
+### CDW11
+Chacón, J. E., Duong, T. and Wand, M. P. (2011). *Asymptotics for General
+Multivariate Kernel Density Derivative Estimators*. Statistica Sinica,
+**21**(2), 807–840. [DOI](https://doi.org/10.5705/ss.2011.036a).
+
+(dh05)=
+### DH05
+Duong, T. and Hazelton, M. L. (2005). *Cross-validation Bandwidth Matrices for
+Multivariate Kernel Density Estimation*. Scandinavian Journal of Statistics,
+**32**(3), 485–506. [DOI](https://doi.org/10.1111/j.1467-9469.2005.00445.x).
+
+(h96b)=
+### H96b
+Holmquist, B. (1996). *The d-Variate Vector Hermite Polynomial of Order k*.
+Linear Algebra and its Applications, **237–238**, 155–190.
+[DOI](https://doi.org/10.1016/0024-3795(95)00595-1). Derivatives of the
+normal density as expectations of a complex normal vector.
+
+(mp92)=
+### MP92
+Mathai, A. M. and Provost, S. B. (1992). *Quadratic Forms in Random
+Variables: Theory and Applications*. Marcel Dekker. Cumulants of quadratic
+forms of a normal vector.
+
+(h96)=
+### H96
+Hyndman, R. J. (1996). *Computing and Graphing Highest Density Regions*. The
+American Statistician, **50**(2), 120–126.
+[DOI](https://doi.org/10.1080/00031305.1996.10474359).
+
+(dgs12)=
+### DGS12
+Duong, T., Goud, B. and Schauer, K. (2012). *Closed-Form Density-Based
+Framework for Automatic Detection of Cellular Morphology Changes*.
+Proceedings of the National Academy of Sciences, **109**(22), 8382–8387.
+[DOI](https://doi.org/10.1073/pnas.1117796109).
+
+(w02)=
+### W02
+Walther, G. (2002). *Detecting the Presence of Mixing with Multiscale Maximum
+Likelihood*. Journal of the American Statistical Association, **97**(458),
+508–513. [DOI](https://doi.org/10.1198/016214502760047032).
+
+(pwm07)=
+### PWM07
+Pal, J. K., Woodroofe, M. and Meyer, M. (2007). *Estimating a Polya Frequency
+Function₂*. In *Complex Datasets and Inverse Problems*, IMS Lecture Notes –
+Monograph Series 54, 239–249.
+[DOI](https://doi.org/10.1214/074921707000000184).
+
+(dr09)=
+### DR09
+Dümbgen, L. and Rufibach, K. (2009). *Maximum Likelihood Estimation of a
+Log-Concave Density and its Distribution Function: Basic Properties and
+Uniform Consistency*. Bernoulli, **15**(1), 40–68.
+[DOI](https://doi.org/10.3150/08-BEJ141).
+
+(dhr07)=
+### DHR07
+Dümbgen, L., Hüsler, A. and Rufibach, K. (2007). *Active Set and EM
+Algorithms for Log-Concave Densities Based on Complete and Censored Data*.
+[arXiv:0707.4643](https://arxiv.org/abs/0707.4643).
+
+(dr11)=
+### DR11
+Dümbgen, L. and Rufibach, K. (2011). *logcondens: Computations Related to
+Univariate Log-Concave Density Estimation*. Journal of Statistical Software,
+**39**(6), 1–28. [DOI](https://doi.org/10.18637/jss.v039.i06).
+
+(fkxs24)=
+### FKXS24
+Feng, O. Y., Kao, Y.-C., Xu, M. and Samworth, R. J. (2024). *Optimal Convex
+M-Estimation via Score Matching*.
+[arXiv:2403.16688](https://arxiv.org/abs/2403.16688).
+
+(w94)=
+### W94
+Wand, M. P. (1994). *Fast Computation of Multivariate Kernel Estimators*.
+Journal of Computational and Graphical Statistics, **3**(4), 433–445.
+[DOI](https://doi.org/10.1080/10618600.1994.10474656). Linear binning.
+
+(lps99)=
+### LPS99
+Liu, R. Y., Parelius, J. M. and Singh, K. (1999). *Multivariate Analysis by
+Data Depth: Descriptive Statistics, Graphics and Inference*. The Annals of
+Statistics, **27**(3), 783–858. [DOI](https://doi.org/10.1214/aos/1018031260).
+
+(ggmm11)=
+### GGMM11
+García-Escudero, L. A., Gordaliza, A., Matrán, C. and Mayo-Iscar, A. (2011).
+*Exploring the Number of Groups in Robust Model-Based Clustering*. Statistics
+and Computing, **21**(4), 585–599.
+[DOI](https://doi.org/10.1007/s11222-010-9194-z).
+
 (r-software)=
 ## R software
 
@@ -573,10 +711,13 @@ Package manuals and source identify the software conventions:
 [Rfit](https://cran.r-project.org/package=Rfit),
 [exactRankTests](https://cran.r-project.org/package=exactRankTests),
 [coin](https://cran.r-project.org/package=coin),
-[tclust](https://cran.r-project.org/package=tclust).
+[tclust](https://cran.r-project.org/package=tclust),
+[ks](https://cran.r-project.org/package=ks),
+[logcondens](https://cran.r-project.org/package=logcondens),
+[asm](https://cran.r-project.org/package=asm).
 The frozen JSON fixtures in `tests/data` record the versions that produced
 the reference values for the univariate, multivariate, GLM, nonlinear,
-depth, rank and clustering comparisons. These fixtures retain their software provenance as
+depth, rank, clustering, density and shape-constrained comparisons. These fixtures retain their software provenance as
 supplementary regression checks. Mathematical definitions, assumptions and
 independent calculations determine acceptance; reproducing an external
 number is not a correctness requirement.

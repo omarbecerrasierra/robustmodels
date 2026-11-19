@@ -18,6 +18,12 @@ and styles that axes without changing global `rcParams`.
 | `residual_qq(model, X, y)` | A fitted regressor with `predict` and `scale_` | Whether the regular residuals look normal, and which do not |
 | `distance_qq(model, X)` | A fitted covariance estimator | Whether the regular robust distances follow the chi-square reference |
 | `cluster_plot(model, X)` | A fitted `TClust` | Clusters, their 97.5% ellipses and the trimmed observations |
+| `hdr_plot(model)` | A fitted `KernelDensity` of one or two variables | Highest density regions and modes |
+| `log_concave_plot(model)` | A fitted `LogConcaveDensity` | The estimate and its knots against the histogram, or the log density |
+| `score_plot(model, X, y)` | A fitted `ScoreMatchingRegressor` | The estimated score and how it bounds large residuals |
+| `coefficient_plot(models, X=, y=)` | Fitted regressors or GLMs with `std_errors_` | Whether robust and least squares fits lead to different conclusions |
+| `dd_plot(X1, X2)` | Two samples with the same variables | Whether two samples share a distribution, and how they differ |
+| `ctl_curves(X)` | A sample to cluster | How many clusters and how much trimming |
 | `pca_outlier_map(model, X=None)` | A fitted `ROBPCA` or `ProjectionPursuitPCA` | Orthogonal outliers, good and bad leverage points of a PCA |
 | `scree_plot(model)` | A fitted robust PCA | How many components carry the variance |
 | `biplot(model, X)` | A fitted robust PCA with at least two components | Scores of the observations and loadings of the variables together |
@@ -432,13 +438,37 @@ figure; inspect its final size before publication.
   zero along the directions without spread, so points far away in those
   directions would sit inside a contour labeled 97.5%.
 
+## Figures for publication
+
+Every plot is sized for one journal column (5.2 × 3.8 inches), uses one color
+per role across the plots, and pairs each color with its own marker so that
+figures remain readable in grayscale and for color-blind readers. Save vector
+figures with `ax.figure.savefig("figure.pdf")`. Many submission systems
+(IEEE, Elsevier) reject the Type 3 fonts that Matplotlib embeds in PDF files
+by default; select TrueType fonts before plotting:
+
+```python
+import matplotlib
+
+matplotlib.rcParams["pdf.fonttype"] = 42
+matplotlib.rcParams["ps.fonttype"] = 42
+```
+
+Combine several plots in one figure by passing each its own axes, for example
+from `plt.subplots(1, 2, figsize=(10.4, 3.8), layout="constrained")`.
+
 The [validation notes](validation.md) record the pre-release comparison and
 its limits. These plots are tools for investigating observations, not rules
 for automatically deleting them.
 
 The [clustering guide](cluster.md) includes an executable `cluster_plot`
 example, and the [depth guide](depth.md) an executable bagplot example, with the
-Tukey median, 50% bag, inflated fence and observed outliers.
+Tukey median, 50% bag, inflated fence and observed outliers. The
+[density guide](density.md) shows `hdr_plot`, and the
+[shape-constrained guide](shape.md) `log_concave_plot` and `score_plot`. The
+[regression guide](regression.md#comparing-fits) shows `coefficient_plot`, the
+[depth guide](depth.md#comparing-two-samples) `dd_plot` and the
+[clustering guide](cluster.md#choosing-the-parameters) `ctl_curves`.
 
 ## Reference
 
@@ -459,4 +489,10 @@ Tukey median, 50% bag, inflated fence and observed outliers.
 .. autofunction:: biplot
 .. autofunction:: discriminant_plot
 .. autofunction:: cluster_plot
+.. autofunction:: hdr_plot
+.. autofunction:: log_concave_plot
+.. autofunction:: score_plot
+.. autofunction:: coefficient_plot
+.. autofunction:: dd_plot
+.. autofunction:: ctl_curves
 ```

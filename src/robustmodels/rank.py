@@ -284,15 +284,21 @@ def rank_anova(y, groups):
 def _wilcoxon_slopes(X, y):
     """Slopes minimizing the sum of ``|(y_i - y_j) - (x_i - x_j)' b|`` over pairs ``i < j``.
 
-    Solved through the dual linear program ``max d' lam`` subject to
-    ``Z' lam = 0`` and ``-1 <= lam <= 1``, whose equality multipliers are the
-    slopes; pairs with equal ``x`` only add a constant and are left out.
+    Pairs with equal ``x`` only add a constant and are left out.
     """
     i, j = np.triu_indices(len(y), 1)
     Z, d = X[i] - X[j], y[i] - y[j]
     keep = Z.any(axis=1)
-    Z, d = Z[keep], d[keep]
-    fit = optimize.linprog(-d, A_eq=Z.T, b_eq=np.zeros(X.shape[1]), bounds=(-1, 1))
+    return _l1_fit(Z[keep], d[keep])
+
+
+def _l1_fit(Z, d):
+    """Coefficients ``b`` minimizing ``sum |d - Z b|`` (least absolute deviations).
+
+    Solved through the dual linear program ``max d' lam`` subject to
+    ``Z' lam = 0`` and ``-1 <= lam <= 1``, whose equality multipliers are ``b``.
+    """
+    fit = optimize.linprog(-d, A_eq=Z.T, b_eq=np.zeros(Z.shape[1]), bounds=(-1, 1))
     if fit.status != 0:  # pragma: no cover (a bounded, feasible problem: lam = 0)
         raise RuntimeError(f"linear programming failed: {fit.message}")
     return -fit.eqlin.marginals

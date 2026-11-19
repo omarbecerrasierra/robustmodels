@@ -93,7 +93,10 @@ def test_adjusted_boxplot_follows_its_definition():
     np.testing.assert_allclose(reflected["fences"], -np.array(s["fences"])[::-1])
     _, ax = plt.subplots()
     assert plots.adjusted_boxplot(np.column_stack([x, -x]), labels=["x", "-x"], ax=ax) is ax
-    assert plots.adjusted_boxplot(x).get_xticklabels()[0].get_text() == "1"
+    from robustmodels.scale import medcouple
+
+    label = plots.adjusted_boxplot(x).get_xticklabels()[0].get_text()
+    assert label == f"1\nMC = {medcouple(x):.2f}"
 
 
 def test_outlyingness_plot_scores_new_observations():
@@ -301,3 +304,114 @@ def test_cluster_plot_marks_clusters_trimmed_points_and_ellipses():
             plots.cluster_plot(fit, X, **bad)
     with pytest.raises(ValueError, match="at least two"):
         plots.cluster_plot(fit, X[:, :1])
+
+
+def test_hdr_plot_shows_the_density_and_its_levels():
+    from robustmodels.density import KernelDensity
+
+    rng = np.random.default_rng(0)
+    kde = KernelDensity(0.4).fit(rng.normal(size=(60, 1)))
+    ax = plots.hdr_plot(kde, probs=[0.5, 0.9], feature_names=["a"])
+    x, y = ax.lines[0].get_data()
+    np.testing.assert_allclose(y, np.exp(kde.score_samples(x[:, None])))
+    legend = [text.get_text() for text in ax.get_legend().get_texts()]
+    assert legend == ["Density estimate", "90% region", "50% region"] and ax.get_xlabel() == "a"
+    kde2 = KernelDensity(0.5).fit(rng.normal(size=(60, 2)))
+    ax = plots.hdr_plot(kde2)
+    contour_labels = {text.get_text() for text in ax.texts} - {"normal kernel, 60 observations"}
+    assert contour_labels and contour_labels <= {"25%", "50%", "75%"}
+    with pytest.raises(ValueError, match="one or two"):
+        plots.hdr_plot(KernelDensity(0.5).fit(rng.normal(size=(20, 3))))
+    with pytest.raises(ValueError, match="feature names"):
+        plots.hdr_plot(kde2, feature_names=["a"])
+
+
+def test_log_concave_plot_draws_the_estimate_and_its_knots():
+    from robustmodels.shape import LogConcaveDensity
+
+    fit = LogConcaveDensity().fit(np.random.default_rng(0).gamma(3, size=100))
+    for log in (False, True):
+        ax = plots.log_concave_plot(fit, log=log, feature_name="x")
+        x, y = ax.lines[0].get_data()
+        expected = fit.score_samples(x)
+        np.testing.assert_allclose(y, expected if log else np.exp(expected))
+        knots = groups(ax)[f"Knots ({len(fit.knots_)})"]
+        np.testing.assert_allclose(knots[:, 0], fit.knots_)
+
+
+def test_score_plot_draws_the_estimated_score():
+    from robustmodels.shape import ScoreMatchingRegressor
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(100, 1))
+    y = X[:, 0] + rng.standard_t(3, 100)
+    fit = ScoreMatchingRegressor().fit(X, y)
+    ax = plots.score_plot(fit, X, y)
+    x, psi = ax.lines[2].get_data()
+    np.testing.assert_allclose(psi, fit.psi(x))
+    np.testing.assert_allclose(ax.lines[1].get_ydata(), -x / fit.scale_**2)
+
+
+def test_coefficient_plot_draws_estimates_and_intervals():
+    from robustmodels.rank import RankRegressor
+    from robustmodels.regression import MMRegressor
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(60, 2))
+    y = 1 + X @ [2.0, -1.0] + rng.standard_t(3, 60)
+    models = [MMRegressor().fit(X, y), RankRegressor().fit(X, y)]
+    ax = plots.coefficient_plot(models, X=X, y=y, intercept=True, level=0.9)
+    z = norm.ppf(0.95)
+    for container, model in zip(ax.containers, models, strict=False):
+        estimates = np.r_[model.intercept_, model.coef_]
+        np.testing.assert_allclose(container.lines[0].get_xdata(), estimates)
+        segments = np.array(container.lines[2][0].get_segments())
+        np.testing.assert_allclose(segments[:, 1, 0] - segments[:, 0, 0], 2 * z * model.std_errors_)
+    design = np.column_stack([np.ones(60), X])
+    ols = np.linalg.lstsq(design, y, rcond=None)[0]
+    np.testing.assert_allclose(ax.containers[2].lines[0].get_xdata(), ols)
+    assert [tick.get_text() for tick in ax.get_yticklabels()] == ["(Intercept)", "x0", "x1"]
+    ax = plots.coefficient_plot(models[0], feature_names=["a", "b"])
+    np.testing.assert_allclose(ax.containers[0].lines[0].get_xdata(), models[0].coef_)
+    for bad, message in [
+        ({"labels": ["one"]}, "labels"),
+        ({"feature_names": ["a"]}, "feature names"),
+        ({"level": 1.0}, "level"),
+        ({"X": X, "y": y[:5]}, "5 values"),
+    ]:
+        with pytest.raises(ValueError, match=message):
+            plots.coefficient_plot(models, **bad)
+    with pytest.raises(ValueError, match="numbers of coefficients"):
+        plots.coefficient_plot([models[0], RankRegressor().fit(X[:, :1], y)])
+
+
+def test_dd_plot_places_observations_at_their_depths():
+    from robustmodels.depth import halfspace_depth
+
+    rng = np.random.default_rng(0)
+    A, B = rng.normal(size=(40, 2)), 2 * rng.normal(size=(30, 2))
+    points = groups(plots.dd_plot(A, B, labels=["a", "b"]))
+    pooled = np.vstack([A, B])
+    expected = np.column_stack([halfspace_depth(A, pooled), halfspace_depth(B, pooled)])
+    np.testing.assert_allclose(points["a (40)"], expected[:40])
+    np.testing.assert_allclose(points["b (30)"], expected[40:])
+    assert groups(plots.dd_plot(A[:, 0], B[:, 0]))  # one variable
+    with pytest.raises(ValueError, match="variables"):
+        plots.dd_plot(A, B[:, :1])
+    with pytest.raises(ValueError, match="2 labels"):
+        plots.dd_plot(A, B, labels=["a"])
+
+
+def test_ctl_curves_draw_the_trimmed_likelihoods():
+    from robustmodels.cluster import TClust
+
+    rng = np.random.default_rng(0)
+    X = np.vstack([rng.normal(0, 1, (30, 2)), rng.normal(6, 1, (30, 2))])
+    ax = plots.ctl_curves(X, n_clusters=(1, 2), alphas=(0.1, 0.0), n_init=5, random_state=0)
+    for line, k in zip(ax.lines, (1, 2), strict=True):
+        np.testing.assert_allclose(line.get_xdata(), [0.0, 0.1])
+        expected = [
+            TClust(k, alpha=alpha, restr_factor=50, n_init=5, random_state=0).fit(X).objective_
+            for alpha in (0.0, 0.1)
+        ]
+        np.testing.assert_allclose(line.get_ydata(), expected)

@@ -62,6 +62,29 @@ mask, and the loop containing the bag and observations inside the fence.
    plots.bagplot(X, feature_names=["First measurement", "Second measurement"])
 ```
 
+## Comparing two samples
+
+The depth-depth plot (Liu, Parelius & Singh 1999) places every observation of
+two samples at its depth in each. Samples from one distribution keep the
+points near the diagonal; a difference in location bends them into a lens,
+and a difference in spread moves them to one side, as here.
+[`density.kde_test`](density.md#comparing-two-samples) tests the difference.
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: ddplot
+   :include-source: true
+   :alt: Depth-depth plot of two samples whose spreads differ, with points off the diagonal.
+
+   import numpy as np
+   from robustmodels import plots
+
+   rng = np.random.default_rng(4)
+   control = rng.normal(size=(150, 2))
+   treated = rng.normal(size=(120, 2)) * [1.6, 1]
+   plots.dd_plot(control, treated, labels=["Control", "Treated"])
+```
+
 ## Numerical checks and limits
 
 The bivariate median and bag use a subset of at most `max_samples=200`
