@@ -12,6 +12,7 @@ Robust estimators of multivariate location and scatter, in
 | `MVE` | `n > p + 1` | Yes | Smallest covering ellipsoid; less efficient than MCD |
 | `OGK` | `n >= 2` | No | Fast for many variables; not rotation equivariant |
 | `StahelDonoho` | `n > p` | Optional | Weights from projection outlyingness; no subset search |
+| `PenaPrieto` | `n > 2p` | Optional | Kurtosis and specific directions (KSD); fast for many variables |
 | `SEstimator` | `n > p` | Yes | Smooth weights instead of a hard subset |
 | `MMEstimator` | `n > p` | Yes | S-estimator refined to 95% shape efficiency |
 
@@ -50,8 +51,8 @@ Every fitted estimator has:
 | `mahalanobis(X)` | Squared robust distances of any observations |
 | `score(X)`, `error_norm(...)`, `get_precision()` | As in `sklearn.covariance.EmpiricalCovariance` |
 
-Estimators that select observations (`MCD`, `MRCD`, `MVE`, `OGK`) also have
-`support_`, a boolean mask of the observations used.
+Estimators that select observations (`MCD`, `MRCD`, `MVE`, `OGK`,
+`PenaPrieto`) also have `support_`, a boolean mask of the observations used.
 
 ### Detecting outliers
 
@@ -104,6 +105,37 @@ and works in any dimension:
 True
 
 ```
+
+### Many variables: Peña–Prieto directions
+
+Random `(p + 1)`-subsets are rarely free of outliers when `p` is large.
+`PenaPrieto` instead projects the data on directions chosen from the data:
+the two directions of extreme kurtosis, normals of hyperplanes through
+neighbouring observations, and the observations themselves (the KSD procedure
+of Peña and Prieto 2007, with the modification of Maronna 2017). Observations
+that stand out on some direction are set aside, the directions are recomputed,
+and the clean set is then completed by Mahalanobis distance.
+
+```pycon
+>>> from robustmodels.covariance import PenaPrieto
+>>> wide = np.random.default_rng(0).normal(size=(200, 20))
+>>> wide[:40, 0] += 10  # 20% concentrated outliers
+>>> ksd = PenaPrieto(random_state=0).fit(wide)
+>>> int(ksd.support_[:40].sum())  # none of the outliers is used
+0
+
+```
+
+It flags the same observations as `initPP` of R's RobStatTM on frozen data,
+and its covariance is additionally scaled for consistency at the normal
+model. Neither KSD nor MCD dominates. In simulations with 20% of outliers
+shifted along one coordinate (`n = 300`, `p = 20`), MCD excluded them from a
+shift of 8 and KSD only from 14; with `n = 1000`, `p = 100` and 10% shifted by 10,
+KSD kept 12 outliers and MCD 41. With few observations per variable
+(`n / p` around 3) KSD can keep many outliers, as RobStatTM's implementation.
+RobStatTM uses KSD to start Rocke's S-estimator; the bisquare `SEstimator`
+gains nothing from it, because in high dimension its own minimum can be the
+contaminated fit (Rocke 1996).
 
 ### With scikit-learn
 
@@ -167,6 +199,8 @@ Sources: [FAST-MCD](references.md#rvd99), [DetMCD](references.md#hrv12),
 .. autoclass:: OGK
    :members: fit
 .. autoclass:: StahelDonoho
+   :members: fit
+.. autoclass:: PenaPrieto
    :members: fit
 .. autoclass:: SEstimator
    :members: fit

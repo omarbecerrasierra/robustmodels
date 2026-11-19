@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 (2026-11-18)
+
+- Add `rank`: `RankRegressor`, rank-based linear regression with Wilcoxon
+  scores (Jaeckel's dispersion minimized exactly by linear programming), with
+  standard errors, `summary()` and `drop_test` for nested models; and
+  `rank_sum_test` and `signed_rank_test`, exact Wilcoxon tests conditional on
+  ties and zeros (Wilcox or Pratt zeros).
+- Add `covariance.PenaPrieto`, the Peña–Prieto kurtosis and specific directions
+  (KSD) estimator of location and scatter for many variables, with Maronna's
+  observation directions.
+- Add `exact=True` to `depth.halfspace_depth`: exact depth in any dimension by
+  the recursive algorithm of Dyckerhoff and Mozharovskyi (2016).
+- Fix bivariate `depth.halfspace_depth` returning a depth one count too low
+  when the query lies between two observations on a line (for example exact
+  integer data): opposite offsets now share one line angle. This also affects
+  the bagplot depth regions of such data.
+
 ## 0.2.0 (2026-11-16)
 
 - Add Python 3.15 to the Linux, Windows and macOS CI matrix and compatibility metadata.
