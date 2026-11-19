@@ -276,3 +276,28 @@ def test_directional_plot_label():
 
     fit = DirectionalOutlyingness().fit(np.arange(20.0)[:, None])
     assert plots.outlyingness_plot(fit).get_ylabel() == "Directional outlyingness"
+
+
+def test_cluster_plot_marks_clusters_trimmed_points_and_ellipses():
+    from robustmodels.cluster import TClust
+
+    rng = np.random.default_rng(0)
+    X = np.vstack([rng.normal(0, 1, (40, 3)), rng.normal(6, 1, (40, 3))])
+    X[:4] = rng.uniform(-20, 20, (4, 3))
+    fit = TClust(2, n_init=50, random_state=0).fit(X)
+    points = groups(plots.cluster_plot(fit, X, features=(0, 2)))
+    trimmed = fit.labels_ == -1
+    np.testing.assert_allclose(points[f"Trimmed ({trimmed.sum()})"], X[trimmed][:, [0, 2]])
+    np.testing.assert_allclose(
+        points[f"Cluster 1 ({np.sum(fit.labels_ == 0)})"], X[fit.labels_ == 0][:, [0, 2]]
+    )
+    ax = plots.cluster_plot(fit, X, feature_names=["a", "b"])
+    ellipse = ax.lines[0].get_xydata() - fit.means_[0, :2]
+    covariance = fit.covariances_[0][:2, :2]
+    squared = np.sum(ellipse * np.linalg.solve(covariance, ellipse.T).T, axis=1)
+    np.testing.assert_allclose(squared, chi2.ppf(0.975, 2))
+    for bad, message in [({"features": (0, 0)}, "features"), ({"feature_names": ["a"]}, "two")]:
+        with pytest.raises(ValueError, match=message):
+            plots.cluster_plot(fit, X, **bad)
+    with pytest.raises(ValueError, match="at least two"):
+        plots.cluster_plot(fit, X[:, :1])

@@ -24,6 +24,7 @@ __all__ = [
     "adjusted_boxplot",
     "bagplot",
     "biplot",
+    "cluster_plot",
     "discriminant_plot",
     "distance_distance",
     "distance_qq",
@@ -669,6 +670,88 @@ def discriminant_plot(model, X, y, *, feature_names=None, ax=None):
     ax.set_ylabel(names[1])
     error = f"{wrong.mean():.1%} of these observations misclassified"
     _title(ax, "Classification regions", f"{type(model).__name__}: {error}")
+    _legend(ax)
+    return ax
+
+
+def cluster_plot(model, X, *, features=(0, 1), feature_names=None, ax=None):
+    """Clusters and trimmed observations of a robust clustering, as R's ``plot.tclust``.
+
+    Observations are drawn by cluster, the trimmed ones as orange diamonds.
+    Crosses and ellipses are the center and 97.5% tolerance ellipse of each
+    cluster's normal model in the two plotted variables. With more variables,
+    the ellipses are the marginal ones of those two.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.cluster.TClust`
+    X : array-like of shape (n_samples, n_features)
+        The training data, or other data to assign with ``model.predict``.
+    features : pair of int, default (0, 1)
+        Columns of ``X`` on the axes.
+    feature_names : sequence of two str, optional
+        Axis labels; ``x_1`` and ``x_2`` (the column numbers plus one) by default.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Fritz, H., García-Escudero, L. A. and Mayo-Iscar, A. (2012). tclust: An R
+    package for a trimming approach to cluster analysis. *Journal of
+    Statistical Software*, 47(12), 1-26.
+    """
+    X = np.asarray(X, dtype=float)
+    if X.ndim != 2 or X.shape[1] < 2:
+        raise ValueError(f"cluster_plot needs at least two variables, got shape {X.shape}")
+    features = list(features)
+    if (
+        len(features) != 2
+        or len(set(features)) != 2
+        or not all(0 <= j < X.shape[1] for j in features)
+    ):
+        raise ValueError(f"features must be two different columns of X, got {features}")
+    names = [f"$x_{j + 1}$" for j in features] if feature_names is None else list(feature_names)
+    if len(names) != 2:
+        raise ValueError("feature_names must contain two labels")
+    labels = model.predict(X)
+    ax = _axes(ax)
+    radius = np.sqrt(chi2.ppf(0.975, 2))
+    block = np.ix_(features, features)
+    for k in range(len(model.means_)):
+        color, marker = _CLASSES[k % len(_CLASSES)]
+        mask = labels == k
+        _points(
+            ax,
+            X[mask, features[0]],
+            X[mask, features[1]],
+            color,
+            marker,
+            f"Cluster {k + 1} ({mask.sum()})",
+        )
+        center = model.means_[k, features]
+        ax.plot(
+            *_ellipse(center, model.covariances_[k][block], radius), color=color, lw=1.3, zorder=2
+        )
+        ax.plot(*center, marker="+", ms=10, mew=1.8, color=INK, zorder=5)
+    trimmed = labels == -1
+    _points(
+        ax,
+        X[trimmed, features[0]],
+        X[trimmed, features[1]],
+        ORANGE,
+        "D",
+        f"Trimmed ({trimmed.sum()})",
+    )
+    ax.set_xlabel(names[0])
+    ax.set_ylabel(names[1])
+    subtitle = (
+        f"{type(model).__name__}: {len(model.means_)} clusters, alpha = {model.alpha:g}, "
+        f"eigenvalue ratio <= {model.restr_factor:g}"
+    )
+    _title(ax, "Robust clustering", subtitle)
     _legend(ax)
     return ax
 
