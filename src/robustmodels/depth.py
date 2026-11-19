@@ -16,18 +16,21 @@ from .outliers import _directions, _merge_ties
 __all__ = ["bagplot_stats", "halfspace_depth", "halfspace_median", "regression_depth"]
 
 _TIE_TOL = 1e-10  # projections closer than this (relative to their range) are tied
+_ANGLE_TOL = 1e-13  # bivariate lines through the query closer than this (radians) coincide
 
 
-def halfspace_depth(X, points=None, *, n_directions=None, random_state=None):
+def halfspace_depth(X, points=None, *, exact=False, n_directions=None, random_state=None):
     """Halfspace (Tukey) depth of ``points`` relative to the sample ``X``.
 
     The depth of ``z`` is the smallest fraction of observations in a closed
     halfspace whose boundary passes through ``z`` (Tukey 1975). It is exact for
     one and two variables (the latter as Rousseeuw & Ruts 1996, in
-    ``O(n log n)`` per point). For more variables it is the smallest univariate
-    depth over directions normal to hyperplanes through ``p`` observations,
-    which is affine invariant and never below the exact depth, as the
-    approximate algorithm of R's mrfDepth.
+    ``O(n log n)`` per point). For more variables it is, by default, the
+    smallest univariate depth over directions normal to hyperplanes through
+    ``p`` observations, which is affine invariant and never below the exact
+    depth, as the approximate algorithm of R's mrfDepth. With ``exact=True`` it
+    is the exact depth, by the recursive algorithm of Dyckerhoff & Mozharovskyi
+    (2016) in ``O(n^(p-1) log n)`` per point, which needs no general position.
 
     Parameters
     ----------
@@ -35,6 +38,10 @@ def halfspace_depth(X, points=None, *, n_directions=None, random_state=None):
         Sample.
     points : array-like of shape (n_points, n_features), optional
         Points whose depth is computed; the rows of ``X`` by default.
+    exact : bool, default False
+        Exact depth for three or more variables; ``n_directions`` and
+        ``random_state`` are then ignored. Practical for ``p = 3`` and a few
+        hundred observations, or ``p = 4`` and about a hundred.
     n_directions : int, default None
         Directions for three or more variables; ``250 * n_features`` by default.
         All hyperplanes are used when there are at most that many.
@@ -44,8 +51,8 @@ def halfspace_depth(X, points=None, *, n_directions=None, random_state=None):
     Returns
     -------
     ndarray of shape (n_points,)
-        Depths in [0, 1]. In one and two dimensions, points outside the convex
-        hull have depth 0; approximate depths in higher dimensions may be positive.
+        Depths in [0, 1]. Exact depths of points outside the convex hull are 0;
+        approximate depths in higher dimensions may be positive.
 
     References
     ----------
@@ -54,6 +61,9 @@ def halfspace_depth(X, points=None, *, n_directions=None, random_state=None):
 
     Rousseeuw, P. J. and Ruts, I. (1996). Algorithm AS 307: Bivariate location
     depth. *Journal of the Royal Statistical Society: Series C*, 45(4), 516-526.
+
+    Dyckerhoff, R. and Mozharovskyi, P. (2016). Exact computation of the
+    halfspace depth. *Computational Statistics & Data Analysis*, 98, 19-30.
 
     Examples
     --------
@@ -79,6 +89,8 @@ def halfspace_depth(X, points=None, *, n_directions=None, random_state=None):
         return np.minimum(below, above) / n
     if p == 2:
         return np.array([_depth_2d(z, X) for z in points]) / n
+    if exact:
+        return np.array([_exact_depth(X - z) for z in points]) / n
     n_directions = 250 * p if n_directions is None else n_directions
     directions = _directions(X, n_directions, as_generator(random_state))
     return _projected_depth(X @ directions, points @ directions) / n
@@ -96,11 +108,22 @@ def _depth_2d(z, X):
     span = np.max(np.abs(offsets), axis=0)
     offsets = offsets / np.where(span > 0, span, 1)
     pi = np.arccos(np.longdouble(-1))
-    angles = np.sort(np.arctan2(offsets[:, 1], offsets[:, 0]) % (2 * pi))
+    # Angle in [0, pi) of the line through each offset, and its side. Opposite
+    # offsets then share one line angle, so rounding cannot open a spurious
+    # cell between a ray and its opposite. Lines closer than _ANGLE_TOL
+    # (after the scaling) are the same line up to rounding.
+    lower = (offsets[:, 1] < 0) | ((offsets[:, 1] == 0) & (offsets[:, 0] < 0))
+    line = np.arctan2(*np.where(lower[:, None], -offsets, offsets).T[::-1])
+    wrap = line > pi - _ANGLE_TOL
+    line, lower = np.where(wrap, line - pi, line), lower ^ wrap
+    order = np.argsort(line)
+    groups = np.cumsum(np.r_[True, np.diff(line[order]) > _ANGLE_TOL])
+    line[order] = line[order][np.r_[0, np.flatnonzero(np.diff(groups)) + 1]][groups - 1]
+    angles = np.sort(line + pi * lower)
     # Every open angular cell between a data ray and an opposite data ray
     # has constant halfplane membership. A fixed epsilon could jump over a
     # narrow cell and miss its smaller count; use each cell's midpoint.
-    critical = np.unique(np.r_[angles, (angles + pi) % (2 * pi)])
+    critical = np.unique(np.r_[line, line + pi])
     gaps = np.diff(np.r_[critical, critical[0] + 2 * pi])
     starts = critical + gaps / 2
     circle = np.concatenate([angles - 2 * pi, angles, angles + 2 * pi])
@@ -108,6 +131,44 @@ def _depth_2d(z, X):
         circle, starts, "right"
     )
     return len(X) - int(away.sum()) + int(inside.min())
+
+
+def _exact_depth(offsets):
+    """Exact depth (as a count) of the origin among the rows of ``offsets``, any dimension."""
+    away = offsets.any(axis=1)
+    return len(offsets) - int(away.sum()) + _nonzero_depth(offsets[away])
+
+
+def _nonzero_depth(A):
+    """Fewest nonzero rows of ``A`` in a closed halfspace through the origin.
+
+    Dyckerhoff & Mozharovskyi (2016, Theorem 2 with k = 1): some optimal
+    halfspace has a boundary that can be rotated onto a row ``a`` without any
+    row changing sides. Rows on the line of ``a`` then contribute the smaller
+    of their two sides; the others contribute the depth of their projections
+    on the orthogonal complement of ``a``, one dimension lower.
+    """
+    n, d = A.shape
+    if n == 0:
+        return 0
+    if d == 2:
+        return _depth_2d(np.zeros(2), A)
+    norms = np.linalg.norm(A, axis=1)
+    best, done = n, np.zeros(n, bool)
+    for i in range(n):
+        if done[i]:
+            continue
+        unit = A[i] / norms[i]
+        along = A @ unit
+        across = A - np.outer(along, unit)
+        line = np.linalg.norm(across, axis=1) <= 1e-12 * norms
+        done |= line
+        complement = np.linalg.svd(unit[None, :])[2][1:]
+        sides = min(np.sum(along[line] > 0), np.sum(along[line] < 0))
+        best = min(best, int(sides) + _nonzero_depth(across[~line] @ complement.T))
+        if best == 0:
+            break
+    return best
 
 
 def _projected_depth(projections, points):
