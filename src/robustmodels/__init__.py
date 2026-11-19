@@ -5,6 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 from . import (
     cluster,
     covariance,
+    density,
     depth,
     glm,
     location,
@@ -14,6 +15,7 @@ from . import (
     rank,
     regression,
     scale,
+    shape,
 )
 
 try:
@@ -24,6 +26,7 @@ except PackageNotFoundError:  # pragma: no cover (source tree that is not instal
 __all__ = [
     "cluster",
     "covariance",
+    "density",
     "depth",
     "glm",
     "location",
@@ -33,4 +36,5 @@ __all__ = [
     "rank",
     "regression",
     "scale",
+    "shape",
 ]
