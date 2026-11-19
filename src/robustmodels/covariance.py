@@ -12,7 +12,7 @@ import math
 import warnings
 
 import numpy as np
-from scipy import linalg, stats
+from scipy import linalg, optimize, stats
 from scipy.stats import chi2
 from sklearn.covariance import EmpiricalCovariance
 from sklearn.utils.validation import validate_data
@@ -38,6 +38,7 @@ __all__ = [
     "MVE",
     "OGK",
     "MMEstimator",
+    "PenaPrieto",
     "SEstimator",
     "StahelDonoho",
     "h_alpha_n",
@@ -989,6 +990,229 @@ class StahelDonoho(_RobustCovariance):
         covariance *= np.median(_mahalanobis_sq(X, location, covariance)) / chi2.ppf(0.5, p)
         self._set_estimates(location, covariance, X)
         return self
+
+
+class PenaPrieto(_RobustCovariance):
+    """Location and scatter by kurtosis and specific directions (Peña & Prieto 2007).
+
+    The KSD procedure, a fast and deterministic-start estimator for many
+    variables, where random hyperplanes through ``p`` observations rarely
+    miss every outlier only after a huge number of trials. On data
+    standardized by the sample mean and covariance it projects the
+    observations on
+
+    - the directions that maximize and minimize the kurtosis of the
+      projections (Peña & Prieto 2001): a few concentrated outliers raise the
+      kurtosis along their direction, many of them lower it;
+    - ``n_directions`` *specific directions*: normals of hyperplanes through
+      ``p`` observations drawn from groups of ``2p`` neighbours along random
+      lines, which are often free of outliers;
+    - the ``10p`` observations of smallest and largest norm, as directions
+      (Maronna 2017).
+
+    Observations whose largest ``|projection - median| / MAD`` exceeds
+    ``3.05 + 0.081 p`` are set aside and the directions recomputed on the
+    rest, at most 10 times or until at most half the sample remains. Set-aside
+    observations then return, closest first, until ``(n + p + 1) / 2`` are in,
+    and while their squared Mahalanobis distance to the mean and covariance
+    of those in is below the 0.99 chi-square quantile. The estimates are the
+    mean and covariance of the observations in, the latter scaled for
+    consistency at the normal model (by ``mcd_consistency(p, 0.99)``) when
+    some observation is out. The steps and constants follow RobStatTM (the R
+    package of Maronna et al. 2019), whose covariance is unscaled. The
+    estimator is affine equivariant; needs ``n > 2p``. RobStatTM uses it to
+    start Rocke's S-estimator; the bisquare :class:`SEstimator` cannot use it
+    that way, since in high dimension its own minimum can be a contaminated fit
+    (Rocke 1996). With few observations per variable, KSD can keep outliers.
+
+    Parameters
+    ----------
+    n_directions : int, default None
+        Specific directions per pass; ``max(20 * n_features, 1000)`` by default.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed for the specific directions.
+
+    Attributes
+    ----------
+    location_ : ndarray of shape (n_features,)
+        Mean of the observations in ``support_``.
+    covariance_ : ndarray of shape (n_features, n_features)
+        Their covariance, scaled for consistency.
+    precision_ : ndarray of shape (n_features, n_features)
+        Pseudo-inverse of ``covariance_``.
+    dist_ : ndarray of shape (n_samples,)
+        Squared robust distances of the training data.
+    support_ : ndarray of bool, shape (n_samples,)
+        Observations used for the estimates.
+    n_iter_ : int
+        Passes of the projection step.
+
+    References
+    ----------
+    Peña, D. and Prieto, F. J. (2001). Multivariate outlier detection and
+    robust covariance matrix estimation. *Technometrics*, 43(3), 286-310.
+
+    Peña, D. and Prieto, F. J. (2007). Combining random and specific
+    directions for outlier detection and robust estimation in high-dimensional
+    multivariate data. *Journal of Computational and Graphical Statistics*,
+    16(1), 228-254.
+
+    Maronna, R. A. (2017). Improving the Peña-Prieto "KSD" procedure.
+    arXiv:1708.03196.
+
+    Maronna, R. A., Martin, R. D., Yohai, V. J. and Salibián-Barrera, M.
+    (2019). *Robust Statistics: Theory and Methods (with R)*, 2nd edition.
+    Wiley.
+
+    Rocke, D. M. (1996). Robustness properties of S-estimators of
+    multivariate location and shape in high dimension. *The Annals of
+    Statistics*, 24(3), 1327-1345.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.covariance import PenaPrieto
+    >>> X = np.random.default_rng(0).normal(size=(200, 20))
+    >>> X[:40, 0] += 10  # 20% concentrated outliers
+    >>> ksd = PenaPrieto(random_state=0).fit(X)
+    >>> int(ksd.support_[:40].sum()), int(ksd.support_[40:].sum())
+    (0, 153)
+    """
+
+    def __init__(self, *, n_directions=None, random_state=None):
+        self.n_directions = n_directions
+        self.random_state = random_state
+
+    def fit(self, X, y=None):
+        """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
+        X = self._validate(X)
+        n, p = X.shape
+        if n <= 2 * p:
+            raise ValueError(f"needs more than twice as many observations as variables (n={n})")
+        if self.n_directions is not None:
+            check_count("n_directions", self.n_directions)
+        n_directions = max(20 * p, 1000) if self.n_directions is None else self.n_directions
+        rng = as_generator(self.random_state)
+        Z = _standardize(X)
+        smallest, fewest = max((n + p + 1) // 2, 2 * p), min(2 * p, max(p + 2, n // 4))
+        cutoff = 3.05 + 0.081 * p
+        keep, self.n_iter_ = np.arange(n), 0
+        while len(keep) > smallest and self.n_iter_ < 10:
+            self.n_iter_ += 1
+            projections = Z[keep] @ _ksd_directions(Z[keep], n_directions, rng)
+            deviations = np.abs(projections - np.median(projections, axis=0))
+            t = _ratio_max(deviations, cutoff * np.median(deviations, axis=0))
+            if not np.any(t > 1):
+                break
+            if np.sum(t <= 1) <= fewest:
+                keep = keep[np.argsort(t, kind="stable")[:fewest]]
+                break
+            keep = keep[t <= 1]
+        support = np.isin(np.arange(n), keep)
+        distances = _mahalanobis_sq(Z, *_mean_cov(Z[support]))
+        missing = smallest - support.sum()
+        if missing > 0:
+            support[np.flatnonzero(~support)[np.argsort(distances[~support])[:missing]]] = True
+        quantile = chi2.ppf(0.99, p)
+        while True:
+            returning = ~support & (_mahalanobis_sq(Z, *_mean_cov(Z[support])) <= quantile)
+            if not returning.any():
+                break
+            support |= returning
+        location, covariance = _mean_cov(X[support])
+        if not support.all():
+            covariance = covariance * mcd_consistency(p, 0.99)
+        self.support_ = support
+        self._set_estimates(location, covariance, X)
+        return self
+
+
+def _standardize(X):
+    """``X`` centred by its mean and whitened by the Cholesky factor of its covariance."""
+    location, covariance = _mean_cov(X)
+    if _logdet(covariance) == -np.inf:
+        raise ValueError("X is singular: the observations lie on a hyperplane")
+    return linalg.solve_triangular(np.linalg.cholesky(covariance), (X - location).T, lower=True).T
+
+
+def _ratio_max(deviations, scales):
+    """Largest ``deviation / scale`` of each row; a zero scale only counts nonzero deviations."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(deviations == 0, 0.0, deviations / scales).max(axis=1)
+
+
+def _ksd_directions(Z, n_directions, rng):
+    """Unit directions (columns) of one KSD pass on the rows ``Z``.
+
+    The observations of smallest and largest norm; then, in the coordinates of
+    ``Z`` standardized again, the two kurtosis extremes and the specific
+    directions, mapped back to the coordinates of ``Z``.
+    """
+    n, p = Z.shape
+    norms = np.linalg.norm(Z, axis=1)
+    order = np.argsort(norms, kind="stable")
+    if 10 * p < n // 2:
+        order = np.r_[order[: 10 * p], order[-10 * p :]]
+    observations = Z[order[norms[order] > 0]] / norms[order[norms[order] > 0], None]
+    location, covariance = _mean_cov(Z)
+    cholesky = np.linalg.cholesky(covariance)
+    W = linalg.solve_triangular(cholesky, (Z - location).T, lower=True).T
+    within = np.c_[_kurtosis_direction(W, 1), _kurtosis_direction(W, -1)]
+    within = np.c_[within, _specific_directions(W, n_directions, rng)]
+    back = linalg.solve_triangular(cholesky.T, within, lower=False)
+    return np.c_[observations.T, back / np.linalg.norm(back, axis=0)]
+
+
+def _kurtosis_direction(W, sign):
+    """Local maximum (``sign=1``) or minimum (``-1``) of the kurtosis of ``W @ a``.
+
+    ``W`` has mean zero and identity covariance, so the kurtosis of the
+    projection on ``a`` is ``sum((W a)^4) / |a|^4`` up to a constant. The search
+    starts at the eigenvector of the covariance of the spatial signs whose
+    kurtosis is most extreme, as RobStatTM.
+    """
+    if W.shape[1] == 1:
+        return np.ones(1)
+    norms = np.linalg.norm(W, axis=1, keepdims=True)
+    signs = W / np.where(norms > 0, norms, 1)
+    starts = np.linalg.eigh(np.cov(signs, rowvar=False))[1]
+    start = starts[:, np.argmax(sign * np.sum((W @ starts) ** 4, axis=0))]
+
+    def loss(a):
+        z, length = W @ a, a @ a
+        value = np.sum(z**4) / length**2
+        gradient = 4 * (W.T @ z**3) / length**2 - 4 * value * a / length
+        return -sign * value, -sign * gradient
+
+    a = optimize.minimize(loss, start, jac=True, method="BFGS").x
+    return a / np.linalg.norm(a)
+
+
+def _specific_directions(W, n_directions, rng):
+    """Normals of hyperplanes through ``p`` of ``2p`` neighbours along random lines.
+
+    Each random pair of observations gives a line; the observations sorted
+    along it are cut into groups of ``2p``, and ``p`` random members of each
+    group define a hyperplane (Peña & Prieto 2007, as RobStatTM's ``SdwDir``).
+    Singular subsets are skipped.
+    """
+    n, p = W.shape
+    directions, attempts = [], 0
+    while len(directions) < n_directions and attempts < 100 * n_directions:
+        attempts += 1
+        i, j = rng.choice(n, 2, replace=False)
+        line = W[i] - W[j]
+        if np.linalg.norm(line) < 1e-7:
+            continue
+        order = np.argsort(W @ line, kind="stable")
+        for group in order[: n // (2 * p) * 2 * p].reshape(-1, 2 * p):
+            points = W[group[rng.permutation(2 * p)[:p]]]
+            if np.linalg.matrix_rank(points) == p:
+                normal = np.linalg.solve(points, np.ones(p))
+                directions.append(normal / np.linalg.norm(normal))
+            if len(directions) >= n_directions:
+                break
+    return np.array(directions).reshape(-1, p).T
 
 
 class SEstimator(_RobustCovariance):

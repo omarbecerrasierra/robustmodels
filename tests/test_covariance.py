@@ -1,4 +1,6 @@
 import itertools
+import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -12,9 +14,11 @@ from robustmodels.covariance import (
     MVE,
     OGK,
     MMEstimator,
+    PenaPrieto,
     SEstimator,
     StahelDonoho,
     h_alpha_n,
+    mcd_consistency,
     mcd_small_sample,
 )
 from robustmodels.scale import qn
@@ -30,7 +34,9 @@ ESTIMATORS = [
 ]
 
 
-@parametrize_with_checks([*ESTIMATORS, StahelDonoho(random_state=0)])
+@parametrize_with_checks(
+    [*ESTIMATORS, StahelDonoho(random_state=0), PenaPrieto(n_directions=50, random_state=0)]
+)
 def test_sklearn_compatible(estimator, check):
     check(estimator)
 
@@ -498,3 +504,61 @@ def test_degenerate_steps_keep_their_inputs():
     far = np.full(2, 100.0)
     kept_location, kept_cov, keep = _reweight(X, far, shape)
     assert kept_location is far and kept_cov is shape and not keep.any()
+
+
+def test_pena_prieto_recovers_concentrated_outliers_in_many_variables():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 20))
+    # 20% of outliers along one coordinate. With a shift of 10, KSD (as
+    # RobStatTM's initPP) keeps 57 of them, while MCD separates them from 8 on.
+    X[:60, 0] += 14
+    ksd = PenaPrieto(random_state=0).fit(X)
+    assert not ksd.support_[:60].any()
+    assert ksd.support_[60:].mean() > 0.95
+    # Maronna's criterion: zero only for the true covariance (the identity).
+    loss = np.trace(ksd.covariance_) - np.linalg.slogdet(ksd.covariance_)[1] - 20
+    classical = np.cov(X.T)
+    assert loss < 2 < np.trace(classical) - np.linalg.slogdet(classical)[1] - 20
+
+
+def test_pena_prieto_is_consistent_and_affine_equivariant():
+    rng = np.random.default_rng(1)
+    X = rng.normal(size=(4000, 3))
+    ksd = PenaPrieto(random_state=0).fit(X)
+    np.testing.assert_allclose(ksd.covariance_, np.eye(3), atol=0.06)
+    np.testing.assert_allclose(ksd.location_, 0, atol=0.05)
+    X = rng.normal(size=(120, 4))
+    X[:15] += 6
+    A, b = rng.normal(size=(4, 4)), rng.normal(size=4)
+    first = PenaPrieto(random_state=3).fit(X)
+    moved = PenaPrieto(random_state=3).fit(X @ A.T + b)
+    np.testing.assert_array_equal(first.support_, moved.support_)
+    np.testing.assert_allclose(moved.location_, A @ first.location_ + b, atol=1e-10)
+    np.testing.assert_allclose(moved.covariance_, A @ first.covariance_ @ A.T, atol=1e-9)
+
+
+def test_pena_prieto_validation_and_univariate_data():
+    with pytest.raises(ValueError, match="twice as many"):
+        PenaPrieto().fit(np.random.default_rng(0).normal(size=(6, 3)))
+    with pytest.raises(ValueError, match="hyperplane"):
+        PenaPrieto().fit(np.c_[np.arange(10.0), np.arange(10.0)])
+    with pytest.raises(ValueError, match="n_directions"):
+        PenaPrieto(n_directions=0).fit(np.random.default_rng(0).normal(size=(20, 2)))
+    # Duplicated observations give random lines of zero length, which are skipped.
+    X = np.repeat([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], 8, axis=0)
+    ksd = PenaPrieto(n_directions=200, random_state=0).fit(X)
+    np.testing.assert_allclose(ksd.location_, [0.5, 0.5])
+    x = np.r_[np.random.default_rng(2).normal(size=40), 30.0, 31.0]
+    ksd = PenaPrieto(random_state=0).fit(x[:, None])
+    assert not ksd.support_[-2:].any()
+
+
+def test_pena_prieto_robstattm_reference():
+    """RobStatTM's initPP flags the same observations; its covariance is not scaled."""
+    data = json.loads((Path(__file__).parent / "data" / "r_multivariate.json").read_text())["ksd"]
+    X = np.array(data["x"])
+    ksd = PenaPrieto(random_state=0).fit(X)
+    assert np.flatnonzero(~ksd.support_).tolist() == data["outliers"]
+    np.testing.assert_allclose(ksd.location_, data["center"], atol=1e-12)
+    scaled = np.array(data["cova"]) * mcd_consistency(10, 0.99)
+    np.testing.assert_allclose(ksd.covariance_, scaled, atol=1e-12)
