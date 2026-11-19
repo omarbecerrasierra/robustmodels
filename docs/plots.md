@@ -17,6 +17,7 @@ and styles that axes without changing global `rcParams`.
 | `residual_plot(model, X, y)` | A fitted regressor with `predict` and `scale_` | Outlying residuals, trends and changing spread along the fitted values |
 | `residual_qq(model, X, y)` | A fitted regressor with `predict` and `scale_` | Whether the regular residuals look normal, and which do not |
 | `distance_qq(model, X)` | A fitted covariance estimator | Whether the regular robust distances follow the chi-square reference |
+| `cluster_plot(model, X)` | A fitted `TClust` | Clusters, their 97.5% ellipses and the trimmed observations |
 | `pca_outlier_map(model, X=None)` | A fitted `ROBPCA` or `ProjectionPursuitPCA` | Orthogonal outliers, good and bad leverage points of a PCA |
 | `scree_plot(model)` | A fitted robust PCA | How many components carry the variance |
 | `biplot(model, X)` | A fitted robust PCA with at least two components | Scores of the observations and loadings of the variables together |
@@ -435,7 +436,8 @@ The [validation notes](validation.md) record the pre-release comparison and
 its limits. These plots are tools for investigating observations, not rules
 for automatically deleting them.
 
-The [depth guide](depth.md) includes an executable bagplot example, with the
+The [clustering guide](cluster.md) includes an executable `cluster_plot`
+example, and the [depth guide](depth.md) an executable bagplot example, with the
 Tukey median, 50% bag, inflated fence and observed outliers.
 
 ## Reference
@@ -456,4 +458,5 @@ Tukey median, 50% bag, inflated fence and observed outliers.
 .. autofunction:: bagplot
 .. autofunction:: biplot
 .. autofunction:: discriminant_plot
+.. autofunction:: cluster_plot
 ```

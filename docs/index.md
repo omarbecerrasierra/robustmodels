@@ -2,7 +2,7 @@
 
 Robust statistics for Python: estimators of location, scale, covariance and
 linear, rank-based and nonlinear regression, exact rank tests, generalized linear models, principal
-components, discriminant analysis, statistical depth and outlier detectors, that stay reliable when part of the data are outliers.
+components, discriminant analysis, robust clustering, statistical depth and outlier detectors, that stay reliable when part of the data are outliers.
 
 ```bash
 pip install robustmodels
@@ -49,6 +49,7 @@ The covariance estimators are scikit-learn estimators:
 | [Method references](references.md) | Scientific sources, formulas and R conventions |
 | [Covariance](covariance.md) | MCD, MRCD, MVE, OGK, Stahel-Donoho, Peña-Prieto (KSD), S- and MM-estimators; outlier detection |
 | [Multivariate methods](multivariate.md) | Robust PCA (ROBPCA, projection pursuit), LDA and QDA, Hotelling's T² and MANOVA |
+| [Robust clustering](cluster.md) | TCLUST and trimmed k-means |
 | [Regression](regression.md) | MM, S, LTS and nonlinear M regression |
 | [Rank-based methods](rank.md) | Rank regression (Wilcoxon R-estimator) and exact Wilcoxon tests with ties |
 | [Generalized linear models](glm.md) | Robust logistic and Poisson models, inference and numerical conventions |
@@ -80,6 +81,7 @@ location
 scale
 covariance
 multivariate
+cluster
 regression
 rank
 glm

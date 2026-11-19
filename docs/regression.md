@@ -87,6 +87,25 @@ does not, they are somewhat less efficient than classical ones. In the tests,
 95% intervals cover the true coefficients about 94% of the time with normal
 errors and 95% with heteroskedastic errors (`n = 100`).
 
+`mm_test(model, X, y, columns)` tests that the slopes of some columns are zero,
+as R's `anova.lmrob`. The default `test="deviance"` refits the reduced model
+with the scale of the full one and compares the robust losses (Ronchetti
+1982); `test="wald"` uses `cov_params_`. Both compare with a chi-square
+distribution:
+
+```pycon
+>>> from robustmodels.regression import mm_test
+>>> result = mm_test(mm, X, y, [0])  # is the slope zero?
+>>> result.df, result.pvalue < 1e-10
+(1, True)
+
+```
+
+The deviance test assumes symmetric errors of constant variance; the Wald test
+inherits the heteroskedasticity-robust covariance. In the tests both keep a
+nominal 5% level with normal and t3 errors (`n = 60`), and they agree with
+`anova.lmrob` up to robustbase's rounded constants.
+
 ### Detecting outliers
 
 Divide the residuals by `scale_` and flag those above 2.24 in absolute value,
@@ -210,6 +229,7 @@ points and poor starting parameters can still dominate the fit.
    :members: fit, predict
 .. autoclass:: SRegressor
    :members: fit, predict
+.. autofunction:: mm_test
 .. autoclass:: NonlinearMRegressor
    :members: fit, predict
 ```

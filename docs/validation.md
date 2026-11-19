@@ -24,6 +24,7 @@ exercised code, not mathematical validity.
 | Mean-vector tests | Robust T² with finite-moment F calibration; weighted Wilks statistic | Undefined-moment/singularity guards, preservation of original groups and bounded independent null simulations |
 | Depth and outlyingness | Closed halfspaces, regression separation, interpolated depth regions and directional side scales | Rational-sign halfplane enumeration, exact 1-D boundaries, exhaustive deletion with linear programming, tied segments and Gaussian quadrature; exact depth in three and four dimensions against linear-programming separation of every subset |
 | High-dimensional covariance | KSD projection steps, Mahalanobis completion and chi-square consistency | Recovery of planted outliers, consistency on 4000 normal observations, affine equivariance with fixed draws, and RobStatTM's selected observations |
+| Robust tests and clustering | Robust deviance and Wald statistics; trimmed classification likelihood with restricted eigenvalues | Simulated 5% size with normal and t3 errors; brute-force eigenvalue truncation, fixed-point assignment and trimmed k-means nearest centers |
 | Rank methods | Jaeckel's dispersion as an L1 problem on pairwise differences; exact conditional distributions of doubled midranks | Enumeration of every assignment and sign pattern with ties and zeros, local optimality of the pairwise loss, the weighted median of pairwise slopes, equivariance, population values of `tau` and `tau_s`, and simulated coverage and test size |
 | Diagnostics | Fitted scores, distances, cutoffs, polygon boundaries and class counts | Coordinates, ellipse quadratic identities, observed endpoints, infinite-score display and Matplotlib interface |
 
@@ -114,7 +115,7 @@ display position does not replace its mathematical value.
 
 Frozen JSON fixtures in `tests/data` record outputs and package versions from
 R's robustbase, rrcov, mrfDepth, aplpack, ddalpha, RobStatTM, Rfit,
-exactRankTests and coin. Their provenance remains visible.
+exactRankTests, coin and tclust. Their provenance remains visible.
 They are supplementary software regression evidence and migration aids, not
 mathematical oracles. A difference is evaluated against the selected definition,
 assumptions and numerical convention. The [R migration guide](from-r.md)

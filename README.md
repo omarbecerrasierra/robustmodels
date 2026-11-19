@@ -28,6 +28,7 @@ observations.
 - **Reduce, classify and test:** robust principal components (ROBPCA and
   projection pursuit), linear and quadratic discriminant analysis, Hotelling's
   T² and one-way MANOVA.
+- **Cluster with outliers present:** TCLUST and trimmed k-means.
 - **Detect outliers:** Stahel-Donoho, adjusted and directional outlyingness;
   halfspace depth (exact in any dimension) and regression depth, Tukey medians
   and bagplots.
@@ -250,6 +251,8 @@ explain the pre-release checks and differences from R.
 | Fit a linear regression with outliers | `MMRegressor` | 50% breakdown and 95% efficiency; `LTSRegressor` and `SRegressor` are alternatives. |
 | Fit a linear regression with heavy-tailed errors | `RankRegressor` | No tuning constant; resists response outliers, not leverage points. |
 | Compare two samples or paired data with ties | `rank_sum_test`, `signed_rank_test` | Exact p-values conditional on the observed ties. |
+| Group observations when some are outliers | `TClust` | Trims a fraction `alpha`; restricts how different the cluster shapes may be. |
+| Test whether some MM slopes are zero | `mm_test` | Robust deviance or Wald test, as `anova.lmrob`. |
 | Fit a nonlinear response curve | `NonlinearMRegressor` | Huber weights; supply the model callable and starting parameters. |
 | Classify two groups with robust logistic regression | `MallowsLogisticRegression` or `BYLogisticRegression` | Bounded residual influence; optional leverage protection. |
 | Fit nonnegative responses with a Poisson model | `MallowsPoissonRegressor` or `MTPoissonRegressor` | MT uses a bounded transformed loss and random starts. |
@@ -281,12 +284,13 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.scale` | `mad`, `qn`, `sn`, `pn`, `tau_scale`, `m_scale`, `medcouple`, `lmc`, `rmc` |
 | `robustmodels.covariance` | `MCD`, `MRCD`, `MVE`, `OGK`, `StahelDonoho`, `PenaPrieto`, `SEstimator`, `MMEstimator` |
 | `robustmodels.multivariate` | `ROBPCA`, `ProjectionPursuitPCA`, `RobustLDA`, `RobustQDA`, `hotelling_t2`, `manova` |
-| `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor`, `NonlinearMRegressor` |
-| `robustmodels.rank` | `RankRegressor`, `drop_test`, `rank_sum_test`, `signed_rank_test` |
+| `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor`, `NonlinearMRegressor`, `mm_test` |
+| `robustmodels.cluster` | `TClust` |
+| `robustmodels.rank` | `RankRegressor`, `drop_test`, `rank_anova`, `rank_sum_test`, `signed_rank_test` |
 | `robustmodels.glm` | `MallowsLogisticRegression`, `MallowsPoissonRegressor`, `BYLogisticRegression`, `MTPoissonRegressor` |
 | `robustmodels.depth` | `halfspace_depth`, `halfspace_median`, `regression_depth`, `bagplot_stats` |
 | `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness`, `DirectionalOutlyingness` |
-| `robustmodels.plots` | `outlier_map`, `residual_plot`, `residual_qq`, `distance_distance`, `distance_qq`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot`, `pca_outlier_map`, `scree_plot`, `biplot`, `discriminant_plot`, `bagplot` |
+| `robustmodels.plots` | `outlier_map`, `residual_plot`, `residual_qq`, `distance_distance`, `distance_qq`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot`, `pca_outlier_map`, `scree_plot`, `biplot`, `discriminant_plot`, `cluster_plot`, `bagplot` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
 `mcd_small_sample`. Each public method has a docstring with parameters,

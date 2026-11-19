@@ -34,11 +34,13 @@ Suggestions and use cases are welcome in
 - **Multivariate methods:** robust PCA (ROBPCA and projection pursuit), robust
   LDA and QDA, robust one-sample Hotelling's T² and one-way MANOVA.
 - **Regression:** least trimmed squares (FAST-LTS) with reweighting, and S and
-  MM estimators (FAST-S), with standard errors and tests for MM; nonlinear
+  MM estimators (FAST-S), with standard errors, tests and nested-model tests for MM; nonlinear
   Huber M regression.
 - **Rank-based methods:** rank regression with Wilcoxon scores (exact fit,
-  standard errors and the drop in dispersion test), and exact Wilcoxon rank-sum
+  standard errors, the drop in dispersion test and one-way analysis of variance),
+  and exact Wilcoxon rank-sum
   and signed-rank tests conditional on ties and zeros.
+- **Robust clustering:** TCLUST and trimmed k-means.
 - **Generalized linear models:** Mallows logistic and Poisson, Bianco–Yohai
   logistic (including leverage trimming), and MT Poisson regression.
 - **Outlier detection and depth:** Stahel-Donoho, adjusted and directional
@@ -46,7 +48,7 @@ Suggestions and use cases are welcome in
   regression depth, the Tukey median and the bagplot.
 - **Diagnostics:** regression and PCA outlier maps, residual plots, quantile
   plots of residuals and robust distances, distance-distance plots, tolerance ellipses, scree
-  plots, biplots, classification regions, adjusted boxplots, bagplots and outlyingness plots.
+  plots, biplots, classification regions, robust clusters, adjusted boxplots, bagplots and outlyingness plots.
 
 ## Later stages
 
