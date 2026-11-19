@@ -12,12 +12,12 @@ remain readable in grayscale.
 """
 
 import numpy as np
-from scipy.stats import chi2
+from scipy.stats import chi2, norm
 from sklearn.covariance import EmpiricalCovariance
 
-from ._validation import as_1d, check_count
+from ._validation import as_1d, check_count, check_range
 from .covariance import MCD, _logdet
-from .depth import bagplot_stats
+from .depth import bagplot_stats, halfspace_depth
 from .scale import medcouple
 
 __all__ = [
@@ -25,14 +25,20 @@ __all__ = [
     "bagplot",
     "biplot",
     "cluster_plot",
+    "coefficient_plot",
+    "ctl_curves",
+    "dd_plot",
     "discriminant_plot",
     "distance_distance",
     "distance_qq",
+    "hdr_plot",
+    "log_concave_plot",
     "outlier_map",
     "outlyingness_plot",
     "pca_outlier_map",
     "residual_plot",
     "residual_qq",
+    "score_plot",
     "scree_plot",
     "tolerance_ellipse",
 ]
@@ -165,7 +171,7 @@ def distance_distance(model, X, *, id_n=3, ax=None):
     cut = np.sqrt(chi2.ppf(0.975, X.shape[1]))
     flagged = robust > cut
     ax = _axes(ax)
-    top = 1.08 * max(robust.max(), classical.max(), cut * 1.25)
+    top = 1.15 * max(robust.max(), classical.max(), cut * 1.25)  # room for labels
     ax.set(xlim=(0, top), ylim=(0, top))
     ax.plot([0, top], [0, top], color=AXIS, lw=0.9, zorder=1)
     _points(
@@ -241,7 +247,7 @@ def tolerance_ellipse(model, X, *, feature_names=None, id_n=3, ax=None):
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
     _title(ax, "Tolerance ellipses", f"{type(model).__name__} against the sample covariance")
-    _legend(ax)
+    _legend(ax, below=True)
     return ax
 
 
@@ -252,7 +258,7 @@ def adjusted_boxplot(x, *, labels=None, ax=None):
     ``Q1 - 1.5 exp(-4 MC) IQR`` and ``Q3 + 1.5 exp(3 MC) IQR`` for medcouple
     ``MC >= 0`` (``exp(-3 MC)`` and ``exp(4 MC)`` otherwise); observations
     beyond them are drawn individually. The box spans Tukey's hinges, as R's
-    ``robustbase::adjbox``. Each box is annotated with its medcouple.
+    ``robustbase::adjbox``. Each box is labeled with its medcouple (MC).
 
     Parameters
     ----------
@@ -280,7 +286,10 @@ def adjusted_boxplot(x, *, labels=None, ax=None):
     names = [str(i + 1) for i in range(len(stats))] if labels is None else list(labels)
     ax = _axes(ax)
     ax.bxp(
-        [{**s, "label": name} for s, name in zip(stats, names, strict=True)],
+        [
+            {**s, "label": f"{name}\nMC = {s['mc']:.2f}"}
+            for s, name in zip(stats, names, strict=True)
+        ],
         widths=0.45,
         patch_artist=True,
         boxprops={"facecolor": BLUE + "1f", "edgecolor": BLUE, "linewidth": 1.3},
@@ -295,16 +304,6 @@ def adjusted_boxplot(x, *, labels=None, ax=None):
             "markeredgewidth": 0.6,
         },
     )
-    for position, s in enumerate(stats, start=1):
-        ax.annotate(
-            f"MC = {s['mc']:.2f}",
-            (position, s["whishi"]),
-            xytext=(0, 6),
-            textcoords="offset points",
-            ha="center",
-            fontsize=8,
-            color=SECONDARY,
-        )
     ax.grid(axis="x", visible=False)
     ax.margins(y=0.08)
     n_out = sum(len(s["fliers"]) for s in stats)
@@ -489,7 +488,7 @@ def bagplot(
     factor : float, default 3.0
         Inflation of the bag that gives the fence.
     feature_names : sequence of two str, optional
-        Axis labels; ``x0`` and ``x1`` by default.
+        Axis labels; ``x_1`` and ``x_2`` by default.
     id_n : int, default 3
         Maximum number of outliers labeled with their zero-based row positions,
         the farthest from the median after scaling by the sample ranges first.
@@ -507,7 +506,7 @@ def bagplot(
     check_count("id_n", id_n)
     stats = bagplot_stats(X, factor=factor, max_samples=max_samples, random_state=random_state)
     X = np.asarray(X, dtype=float)
-    names = ["x0", "x1"] if feature_names is None else [str(name) for name in feature_names]
+    names = ["$x_1$", "$x_2$"] if feature_names is None else [str(name) for name in feature_names]
     if len(names) != 2:
         raise ValueError(f"expected 2 feature names, got {len(names)}")
     flagged = stats.outliers
@@ -526,7 +525,7 @@ def bagplot(
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
     _title(ax, "Bagplot", f"{flagged.sum()} of {len(X)} observations outside the fence")
-    _legend(ax)
+    _legend(ax, below=True)
     return ax
 
 
@@ -670,7 +669,7 @@ def discriminant_plot(model, X, y, *, feature_names=None, ax=None):
     ax.set_ylabel(names[1])
     error = f"{wrong.mean():.1%} of these observations misclassified"
     _title(ax, "Classification regions", f"{type(model).__name__}: {error}")
-    _legend(ax)
+    _legend(ax, below=True)
     return ax
 
 
@@ -754,6 +753,386 @@ def cluster_plot(model, X, *, features=(0, 1), feature_names=None, ax=None):
     _title(ax, "Robust clustering", subtitle)
     _legend(ax)
     return ax
+
+
+def hdr_plot(model, *, probs=(0.25, 0.5, 0.75), feature_names=None, ax=None):
+    """Highest density regions of a kernel density estimate (Hyndman 1996), as R's ``plot.kde``.
+
+    The region of probability ``prob`` is ``{x : f(x) >= level}``, with the
+    level from :meth:`~robustmodels.density.KernelDensity.hdr_level`. For two
+    variables the regions are filled, darker for the smaller ones, inside
+    their boundary contours, over the training observations; for one
+    variable they are shaded under the density curve, over a rug of the
+    observations. Separate regions of the same probability reveal modes.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.density.KernelDensity` with one or two variables
+    probs : sequence of float in (0, 1), default (0.25, 0.5, 0.75)
+    feature_names : sequence of str, optional
+        Axis labels; ``x_1`` and ``x_2`` by default.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Hyndman, R. J. (1996). Computing and graphing highest density regions.
+    *The American Statistician*, 50(2), 120-126.
+    """
+    from matplotlib.colors import to_rgba
+    from matplotlib.patches import Patch
+
+    X, d = model.X_, model.n_features_in_
+    if d > 2:
+        raise ValueError(f"hdr_plot needs a model of one or two variables, got {d}")
+    names = [f"$x_{j + 1}$" for j in range(d)] if feature_names is None else list(feature_names)
+    if len(names) != d:
+        raise ValueError(f"expected {d} feature names, got {len(names)}")
+    probs = np.sort(np.atleast_1d(np.asarray(probs, dtype=float)))[::-1]  # largest region first
+    levels = model.hdr_level(probs)
+    alphas = np.linspace(0.16, 0.6, len(probs))
+    pad = 3 * np.sqrt(np.diag(model.bandwidth_))
+    low, high = X.min(axis=0) - pad, X.max(axis=0) + pad
+    ax = _axes(ax)
+    regions = [
+        Patch(color=BLUE, alpha=alpha, lw=0, label=f"{prob:.0%} region")
+        for prob, alpha in zip(probs, alphas, strict=True)
+    ]
+    if d == 1:
+        grid = np.linspace(low[0], high[0], 512)
+        density = np.exp(model.score_samples(grid[:, None]))
+        for level, alpha in zip(levels, alphas, strict=True):
+            ax.fill_between(grid, 0, density, where=density >= level, color=BLUE, alpha=alpha, lw=0)
+        ax.plot(grid, density, color=BLUE, lw=1.6, zorder=3, label="Density estimate")
+        ax.plot(X[:, 0], np.zeros(len(X)), "|", color=SECONDARY, ms=7, mew=0.7,
+                transform=ax.get_xaxis_transform(), zorder=2)  # fmt: skip
+        ax.set_ylim(0, 1.08 * density.max())
+        ax.set_ylabel("Density")
+    else:
+        axes = [np.linspace(low[j], high[j], 160) for j in range(2)]
+        grid = np.stack(np.meshgrid(*axes), axis=-1).reshape(-1, 2)
+        density = np.exp(model.score_samples(grid)).reshape(160, 160)
+        bounds = np.r_[levels, max(density.max(), levels[-1]) * (1 + 1e-9)]
+        colors = [to_rgba(BLUE, alpha) for alpha in alphas]
+        ax.contourf(*axes, density, levels=bounds, colors=colors, zorder=1)
+        contours = ax.contour(*axes, density, levels=levels, colors=BLUE, linewidths=0.9, zorder=2)
+        labels = {level: f"{prob:.0%}" for level, prob in zip(levels, probs, strict=True)}
+        ax.clabel(contours, fmt=labels, fontsize=7.5, colors=INK)
+        ax.scatter(*X.T, s=7, color=REGULAR, lw=0, zorder=3, label=f"Observations ({len(X)})")
+        ax.set_ylabel(names[1])
+    ax.set_xlabel(names[0])
+    handles = ax.get_legend_handles_labels()[0]
+    ax.legend(handles=[*handles, *regions], frameon=False, fontsize=8, labelcolor=SECONDARY)
+    _title(ax, "Highest density regions", f"normal kernel, {len(X)} observations")
+    return ax
+
+
+def log_concave_plot(model, *, log=False, feature_name=None, ax=None):
+    """Log-concave maximum likelihood density over the histogram of the sample, as R's ``plot.dlc``.
+
+    The estimate is drawn with its knots, the observations where the slope of
+    the log density changes. With ``log=True`` the log density, which is
+    piecewise linear and concave, is drawn instead.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.shape.LogConcaveDensity`
+    log : bool, default False
+    feature_name : str, optional
+        Label of the horizontal axis; ``x`` by default.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Dümbgen, L. and Rufibach, K. (2011). logcondens: Computations related to
+    univariate log-concave density estimation. *Journal of Statistical
+    Software*, 39(6), 1-28.
+    """
+    x, knots = model.support_, model.knots_
+    grid = np.union1d(np.linspace(x[0], x[-1], 512), knots)
+    values = model.score_samples(grid)
+    at_knots = model.score_samples(knots)
+    ax = _axes(ax)
+    if not log:
+        edges = np.histogram_bin_edges(x, bins="auto")
+        ax.hist(x, bins=edges, weights=model.weights_, density=True, color=GRID, edgecolor="white",
+                lw=0.6, zorder=1, label="Histogram")  # fmt: skip
+        values, at_knots = np.exp(values), np.exp(at_knots)
+    ax.plot(grid, values, color=BLUE, lw=1.8, zorder=3, label="Log-concave estimate")
+    _points(ax, knots, at_knots, BLUE, "o", f"Knots ({len(knots)})")
+    ax.set_xlabel("x" if feature_name is None else str(feature_name))
+    ax.set_ylabel("Log density" if log else "Density")
+    _title(ax, "Log-concave density", f"maximum likelihood, {len(x)} distinct observations")
+    _legend(ax)
+    return ax
+
+
+def score_plot(model, X, y, *, ax=None):
+    """Antitonic score of a regression by score matching, as R's ``plot.asm``.
+
+    The estimated score ``psi`` (minus the derivative of the convex loss)
+    against the residual, over a rug of the residuals, with the score of a
+    normal distribution with the MAD of the residuals for comparison: the
+    least squares fit uses that straight line, while a bounded score limits
+    the influence of large residuals. The horizontal axis covers the central
+    98% of the residuals, widened by a quarter of that range on each side.
+
+    Parameters
+    ----------
+    model : fitted :class:`~robustmodels.shape.ScoreMatchingRegressor`
+    X : array-like of shape (n_samples, n_features)
+    y : array-like of shape (n_samples,)
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Feng, O. Y., Kao, Y.-C., Xu, M. and Samworth, R. J. (2024). Optimal
+    convex M-estimation via score matching. arXiv:2403.16688.
+    """
+    X, residuals = _standardized_residuals(model, X, y)
+    residuals = residuals * model.scale_
+    low, high = np.quantile(residuals, [0.01, 0.99])
+    grid = np.linspace(low - (high - low) / 4, high + (high - low) / 4, 600)
+    psi = model.psi(grid)
+    ax = _axes(ax)
+    ax.axhline(0, color=AXIS, lw=0.8, zorder=1)
+    ax.plot(grid, -grid / model.scale_**2, color=AQUA, lw=1.2, ls=(0, (5, 3)), zorder=2,
+            label="Normal score (MAD scale)")  # fmt: skip
+    ax.plot(grid, psi, color=BLUE, lw=1.8, zorder=3, label="Antitonic score")
+    ax.plot(residuals, np.zeros(len(residuals)), "|", color=SECONDARY, ms=7, mew=0.7,
+            transform=ax.get_xaxis_transform(), zorder=2)  # fmt: skip
+    reach = 1.6 * np.abs(psi).max()
+    ax.set(xlim=(grid[0], grid[-1]), ylim=(-reach, reach))
+    ax.set_xlabel("Residual")
+    ax.set_ylabel(r"Score $\psi$")
+    _title(ax, "Antitonic score", f"estimated information {model.information_:.3g}")
+    _legend(ax)
+    return ax
+
+
+def coefficient_plot(
+    models, *, labels=None, X=None, y=None, feature_names=None, intercept=False, level=0.95, ax=None
+):
+    """Coefficient estimates of several fitted models with their confidence intervals.
+
+    Each row is a coefficient and each model a marker with its interval
+    ``estimate +- z * standard error``, ``z`` the normal quantile of
+    ``level``. Passing ``X`` and ``y`` adds least squares, with its classical
+    standard errors, as the reference: where robust and classical intervals
+    separate, a few observations drive the classical conclusion.
+
+    Parameters
+    ----------
+    models : fitted model or sequence of fitted models
+        Each with ``coef_``, ``intercept_`` and ``std_errors_``, such as
+        :class:`~robustmodels.regression.MMRegressor`,
+        :class:`~robustmodels.rank.RankRegressor`,
+        :class:`~robustmodels.shape.ScoreMatchingRegressor` or the robust GLMs,
+        all with the same predictors.
+    labels : sequence of str, optional
+        Model names; the class names by default.
+    X, y : array-like, optional
+        Data for the least squares reference.
+    feature_names : sequence of str, optional
+        Coefficient names; ``x0, x1, ...`` by default.
+    intercept : bool, default False
+        Also show the intercepts.
+    level : float in (0, 1), default 0.95
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    models = list(models) if isinstance(models, (list, tuple)) else [models]
+    check_range("level", level, 0, 1, low_open=True, high_open=True)
+    names = [type(model).__name__ for model in models] if labels is None else list(labels)
+    if len(names) != len(models):
+        raise ValueError(f"expected {len(models)} labels, got {len(names)}")
+    p = len(models[0].coef_)
+    if any(len(model.coef_) != p for model in models):
+        raise ValueError("the models have different numbers of coefficients")
+    rows = [f"x{j}" for j in range(p)] if feature_names is None else list(feature_names)
+    if len(rows) != p:
+        raise ValueError(f"expected {p} feature names, got {len(rows)}")
+    fits = []
+    for model in models:
+        errors = np.asarray(model.std_errors_, dtype=float)
+        first = (model.intercept_, errors[0]) if len(errors) == p + 1 else (np.nan, np.nan)
+        fits.append((np.r_[first[0], model.coef_], np.r_[first[1], errors[-p:]]))
+    styles = [(BLUE, "o"), (VIOLET, "^"), (SECONDARY, "v"), (MUTED, "D")]
+    styles = [styles[k % len(styles)] for k in range(len(models))]
+    if X is not None:
+        fits.append(_least_squares(X, y))
+        names.append("Least squares")
+        styles.append((AQUA, "s"))
+    keep = slice(0 if intercept else 1, None)
+    rows = ["(Intercept)", *rows][keep]
+    z = norm.ppf((1 + level) / 2)
+    ax = _axes(ax)
+    position = np.arange(len(rows))[::-1].astype(float)
+    width = 0.7 / len(fits)
+    for k, ((estimates, errors), name, (color, marker)) in enumerate(
+        zip(fits, names, styles, strict=True)
+    ):
+        offset = (len(fits) - 1) / 2 * width - k * width
+        ax.errorbar(
+            estimates[keep], position + offset, xerr=z * errors[keep], fmt=marker, color=color,
+            ms=5.5, mec="white", mew=0.7, elinewidth=1.4, capsize=0, label=name, zorder=3,
+        )  # fmt: skip
+    ax.axvline(0, color=AXIS, lw=0.9, zorder=1)
+    ax.set_yticks(position, rows)
+    ax.set_ylim(-0.6, len(rows) - 0.4)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("Estimate")
+    subtitle = f"{level:.0%} intervals: estimate ± {z:.2f} standard errors"
+    _title(ax, "Coefficient estimates", subtitle)
+    _legend(ax, below=True)
+    return ax
+
+
+def dd_plot(X1, X2, *, labels=("Sample 1", "Sample 2"), random_state=None, ax=None):
+    """Depth-depth plot of two samples (Liu, Parelius & Singh 1999).
+
+    Each observation of both samples is placed at its halfspace depth with
+    respect to the first sample and to the second. When both samples come
+    from one distribution the points lie near the diagonal. A difference in
+    location bends them into a lens away from the diagonal, a difference in
+    spread puts them on one side of it, and skewness or shape differences
+    give other departures. :func:`~robustmodels.density.kde_test` gives the
+    corresponding test.
+
+    Parameters
+    ----------
+    X1, X2 : array-like of shape (n1, n_features) and (n2, n_features)
+        One-dimensional arrays are samples of one variable.
+    labels : pair of str, default ("Sample 1", "Sample 2")
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+        Seed of the directions of the approximate depth for three or more variables.
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    Liu, R. Y., Parelius, J. M. and Singh, K. (1999). Multivariate analysis by
+    data depth: descriptive statistics, graphics and inference. *The Annals of
+    Statistics*, 27(3), 783-858.
+    """
+    X1, X2 = (np.asarray(X, dtype=float) for X in (X1, X2))
+    X1, X2 = (X[:, None] if X.ndim == 1 else X for X in (X1, X2))
+    if X1.shape[1] != X2.shape[1]:
+        raise ValueError(f"the samples have {X1.shape[1]} and {X2.shape[1]} variables")
+    labels = [str(label) for label in labels]
+    if len(labels) != 2:
+        raise ValueError(f"expected 2 labels, got {len(labels)}")
+    pooled = np.vstack([X1, X2])
+    first = halfspace_depth(X1, pooled, random_state=random_state)
+    second = halfspace_depth(X2, pooled, random_state=random_state)
+    ax = _axes(ax)
+    ax.plot([0, 0.5], [0, 0.5], color=SECONDARY, lw=0.9, ls=(0, (4, 3)), zorder=1)
+    n1 = len(X1)
+    _points(ax, first[:n1], second[:n1], BLUE, "o", f"{labels[0]} ({n1})")
+    _points(ax, first[n1:], second[n1:], VIOLET, "^", f"{labels[1]} ({len(X2)})")
+    ax.set(xlim=(-0.02, 0.52), ylim=(-0.02, 0.52), aspect="equal")
+    ax.set_xlabel(f"Depth in {labels[0]}")
+    ax.set_ylabel(f"Depth in {labels[1]}")
+    _title(ax, "Depth-depth plot", "halfspace depth; points near the diagonal if one distribution")
+    _legend(ax)
+    return ax
+
+
+def ctl_curves(
+    X,
+    *,
+    n_clusters=(1, 2, 3, 4),
+    alphas=(0.0, 0.04, 0.08, 0.12, 0.16, 0.2),
+    restr_factor=50.0,
+    n_init=500,
+    random_state=None,
+    ax=None,
+):
+    """Classification trimmed likelihood curves for choosing ``n_clusters`` and ``alpha``.
+
+    Fits :class:`~robustmodels.cluster.TClust` for each number of clusters
+    ``k`` and trimming level ``alpha`` and draws the trimmed classification
+    log-likelihood against ``alpha``, one curve per ``k``, as R's
+    ``ctlcurves`` (García-Escudero, Gordaliza, Matrán & Mayo-Iscar 2011). The
+    likelihood always grows with ``k``; choose the smallest ``k`` whose curve
+    is close to that of ``k + 1``, and the smallest ``alpha`` from which they
+    stay close: a larger gap means an extra cluster, possibly made of outliers
+    that more trimming would remove.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+    n_clusters : sequence of int, default (1, 2, 3, 4)
+    alphas : sequence of float in [0, 1), default six values from 0 to 0.2
+    restr_factor : float, default 50.0
+        Eigenvalue ratio of every fit, R's default for these curves.
+    n_init : int, default 500
+        Random starts of every fit; fewer are faster and less reliable.
+    random_state : int, numpy.random.Generator, numpy.random.RandomState or None
+    ax : matplotlib Axes, optional
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+
+    References
+    ----------
+    García-Escudero, L. A., Gordaliza, A., Matrán, C. and Mayo-Iscar, A.
+    (2011). Exploring the number of groups in robust model-based clustering.
+    *Statistics and Computing*, 21(4), 585-599.
+    """
+    from .cluster import TClust
+
+    alphas = np.sort(np.asarray(alphas, dtype=float))
+    ax = _axes(ax)
+    for k, clusters in enumerate(n_clusters):
+        objectives = [
+            TClust(
+                clusters, alpha=alpha, restr_factor=restr_factor, n_init=n_init,
+                random_state=random_state,
+            ).fit(X).objective_
+            for alpha in alphas
+        ]  # fmt: skip
+        color, marker = _CLASSES[k % len(_CLASSES)]
+        ax.plot(alphas, objectives, color=color, lw=1.4, marker=marker, ms=6, mec="white",
+                mew=0.7, zorder=2, label=f"k = {clusters}")  # fmt: skip
+    ax.set_xlabel(r"Trimming level $\alpha$")
+    ax.set_ylabel("Trimmed classification log-likelihood")
+    _title(ax, "Classification trimmed likelihood curves",
+           f"TCLUST, eigenvalue ratio <= {restr_factor:g}")  # fmt: skip
+    _legend(ax)
+    return ax
+
+
+def _least_squares(X, y):
+    """Least squares estimates and classical standard errors, intercept first."""
+    X = np.asarray(X, dtype=float)
+    X = X[:, None] if X.ndim == 1 else X
+    y = as_1d(y)
+    if len(y) != len(X):
+        raise ValueError(f"y has {len(y)} values for {len(X)} rows of X")
+    design = np.column_stack([np.ones(len(X)), X])
+    estimates, *_ = np.linalg.lstsq(design, y, rcond=None)
+    residuals = y - design @ estimates
+    variance = residuals @ residuals / (len(y) - design.shape[1])
+    return estimates, np.sqrt(variance * np.diag(np.linalg.pinv(design.T @ design)))
 
 
 def distance_qq(model, X, *, id_n=3, ax=None):
@@ -1017,10 +1396,18 @@ def _title(ax, title, subtitle):
     )  # fmt: skip
 
 
-def _legend(ax):
+def _legend(ax, below=False):
+    """Legend inside the axes, or in rows under the axis label when the data fill the axes."""
+    if not below:
+        ax.legend(
+            frameon=False, fontsize=8, loc="best", handletextpad=0.4, borderaxespad=0.3,
+            labelcolor=SECONDARY,
+        )  # fmt: skip
+        return
+    entries = len(ax.get_legend_handles_labels()[1])
     ax.legend(
-        frameon=False, fontsize=8, loc="best", handletextpad=0.4, borderaxespad=0.3,
-        labelcolor=SECONDARY,
+        frameon=False, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.17),
+        ncol=min(entries, 3), handletextpad=0.4, columnspacing=1.2, labelcolor=SECONDARY,
     )  # fmt: skip
 
 
