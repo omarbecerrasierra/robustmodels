@@ -20,7 +20,14 @@ from ._validation import as_1d, check_option
 from .regression import _coefficient_table
 from .scale import mad
 
-__all__ = ["RankRegressor", "RankTestResult", "drop_test", "rank_sum_test", "signed_rank_test"]
+__all__ = [
+    "RankRegressor",
+    "RankTestResult",
+    "drop_test",
+    "rank_anova",
+    "rank_sum_test",
+    "signed_rank_test",
+]
 
 _ALTERNATIVES = ("two-sided", "less", "greater")
 
@@ -224,6 +231,54 @@ def drop_test(full, reduced=None):
     statistic = max(reduction, 0.0) / q / (full.tau_ / 2)
     df = n - p - 1
     return DropTestResult(float(statistic), (q, df), float(stats.f.sf(statistic, q, df)))
+
+
+def rank_anova(y, groups):
+    """Rank-based one-way analysis of variance, as Rfit's ``oneway.rfit``.
+
+    Fits the one-way model ``y = mu_g + e`` with :class:`RankRegressor` on
+    indicator columns of the groups and tests that all group centers are equal
+    with :func:`drop_test`. Unlike the Kruskal-Wallis test it estimates the
+    group effects and their standard errors, and it extends to other designs
+    through :class:`RankRegressor` and :func:`drop_test`.
+
+    Parameters
+    ----------
+    y : array-like of shape (n_samples,)
+        Response.
+    groups : array-like of shape (n_samples,)
+        Group of each observation; at least two groups.
+
+    Returns
+    -------
+    DropTestResult
+        ``statistic``, ``df`` (``(k - 1, n - k)``) and ``pvalue``.
+
+    References
+    ----------
+    Hettmansperger, T. P. and McKean, J. W. (2011). *Robust Nonparametric
+    Statistical Methods*, 2nd edition, Section 4.2. CRC Press.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from robustmodels.rank import rank_anova
+    >>> rng = np.random.default_rng(0)
+    >>> groups = np.repeat(["a", "b", "c"], 15)
+    >>> y = rng.standard_t(3, size=45) + np.repeat([0.0, 0.0, 1.5], 15)
+    >>> result = rank_anova(y, groups)
+    >>> result.df, round(result.pvalue, 4)
+    ((2, 42), 0.0081)
+    """
+    y = as_1d(y)
+    groups = np.asarray(groups)
+    if groups.shape != y.shape:
+        raise ValueError(f"groups has shape {groups.shape}, y has {y.shape}")
+    levels, codes = np.unique(groups, return_inverse=True)
+    if len(levels) < 2:
+        raise ValueError("rank_anova needs at least two groups")
+    indicators = (codes[:, None] == np.arange(1, len(levels))).astype(float)
+    return drop_test(RankRegressor().fit(indicators, y))
 
 
 def _wilcoxon_slopes(X, y):
