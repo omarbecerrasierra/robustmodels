@@ -39,7 +39,23 @@ errors use the scale `tau` of Koul, Sievers and McKean (1987) for the slopes
 and `tau_s`, from the confidence interval of the median, for the intercept.
 `drop_test(full, reduced)` compares nested fits on the same response, the rank
 analogue of the F test; `summary()` reports it for all slopes, with the robust
-R² of Rfit. The residual diagnostics of [`plots`](plots.md) accept a fitted
+R² of Rfit. `rank_anova(y, groups)` is the one-way analysis of variance by
+ranks (Rfit's `oneway.rfit`): the drop test of the model with one center per
+group.
+
+```pycon
+>>> from robustmodels.rank import rank_anova
+>>> groups = np.repeat(["a", "b", "c"], 15)
+>>> y3 = rng.standard_t(3, size=45) + np.repeat([0.0, 0.0, 1.5], 15)
+>>> rank_anova(y3, groups).df
+(2, 42)
+
+```
+
+An exact Kruskal-Wallis test conditional on ties would need the joint
+distribution of the rank sums of all groups but one; R's coin and
+exactRankTests offer exact rank tests only for one and two samples. For small
+samples, `scipy.stats.permutation_test` enumerates all assignments. The residual diagnostics of [`plots`](plots.md) accept a fitted
 `RankRegressor`, whose `scale_` is the MAD of the residuals.
 
 ## Exact tests with ties
@@ -105,6 +121,7 @@ Streitberg and Röhmel (1986), Hothorn et al. (2006) and Pratt (1959).
 .. autoclass:: RankRegressor
    :members: fit, predict, summary
 .. autofunction:: drop_test
+.. autofunction:: rank_anova
 .. autofunction:: rank_sum_test
 .. autofunction:: signed_rank_test
 ```

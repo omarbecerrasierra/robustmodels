@@ -3,6 +3,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from . import (
+    cluster,
     covariance,
     depth,
     glm,
@@ -21,6 +22,7 @@ except PackageNotFoundError:  # pragma: no cover (source tree that is not instal
     __version__ = "unknown"
 
 __all__ = [
+    "cluster",
     "covariance",
     "depth",
     "glm",

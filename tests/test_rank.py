@@ -22,6 +22,7 @@ from robustmodels.rank import (
     _tau,
     _tau_s,
     drop_test,
+    rank_anova,
     rank_sum_test,
     signed_rank_test,
 )
@@ -264,3 +265,28 @@ def test_rfit_reference(name):
     if "drop1_F" in r:
         reduced = RankRegressor().fit(X[:, :1], y)
         assert drop_test(fit, reduced).statistic == pytest.approx(r["drop1_F"], rel=1e-2)
+
+
+def test_rank_anova_is_the_drop_test_of_the_one_way_model():
+    rng = np.random.default_rng(9)
+    groups = np.repeat(["x", "y", "z", "w"], 12)
+    y = rng.standard_t(3, size=48) + np.repeat([0.0, 0.5, 0.0, 1.0], 12)
+    levels = np.unique(groups)
+    indicators = (groups[:, None] == levels[1:]).astype(float)
+    assert rank_anova(y, groups) == drop_test(RankRegressor().fit(indicators, y))
+    # The test does not depend on the reference group or the group labels.
+    renamed = np.array([dict(zip(levels, "dcba", strict=True))[g] for g in groups])
+    assert rank_anova(y, renamed).statistic == pytest.approx(rank_anova(y, groups).statistic)
+    with pytest.raises(ValueError, match="two groups"):
+        rank_anova(y, np.zeros(48))
+    with pytest.raises(ValueError, match="shape"):
+        rank_anova(y, groups[:-1])
+
+
+def test_rank_anova_rfit_reference():
+    r = R["oneway"]
+    result = rank_anova(r["y"], r["g"])
+    assert result.df == tuple(r["df"])
+    # Rfit's tau comes from a numerical root with an absolute tolerance.
+    assert result.statistic == pytest.approx(r["F"], rel=5e-3)
+    assert result.pvalue == pytest.approx(r["p"], rel=2e-2)

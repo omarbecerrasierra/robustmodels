@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 (2026-11-18)
+
+- Add `cluster.TClust`: robust clustering by trimming with eigenvalue
+  restrictions (TCLUST), including trimmed k-means, and `plots.cluster_plot`.
+- Add `regression.mm_test`: robust deviance and Wald tests of nested MM
+  regressions, as R's `anova.lmrob`.
+- Add `rank.rank_anova`: one-way analysis of variance by ranks, as Rfit's
+  `oneway.rfit`.
+
 ## 0.3.0 (2026-11-18)
 
 - Add `rank`: `RankRegressor`, rank-based linear regression with Wilcoxon

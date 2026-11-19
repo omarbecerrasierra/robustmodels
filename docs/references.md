@@ -55,6 +55,10 @@ certify this implementation. The method pages explain numerical conventions and 
 | `depth.halfspace_depth` | [T75](#t75), [RR96](#rr96), [DM16](#dm16) | Exact in one and two dimensions; above two, sampled-hyperplane upper approximation or, with `exact=True`, the recursive exact algorithm |
 | `covariance.PenaPrieto` | [PP01](#pp01), [PP07](#pp07), [M17](#m17), [MMYS19](#mmys19) | KSD steps and constants of RobStatTM's `initPP`; covariance scaled by the 0.99 chi-square consistency factor, which RobStatTM omits |
 | `rank.RankRegressor`, `rank.drop_test` | [J72](#j72), [MH76](#mh76), [KSM87](#ksm87), [HM11](#hm11), [KM12](#km12) | Wilcoxon scores standardized as Rfit; exact linear-programming fit; exact 0.8 quantile for `tau`; Rfit's small-sample corrections; `rfit`, `drop.test` |
+| `rank.rank_anova` | [HM11](#hm11), [KM12](#km12) | Drop test of the one-way model with group indicators; `oneway.rfit` |
+| `regression.mm_test` | [R82](#r82), [HRRS86](#hrrs86) | Reduced M-fit with the full scale, `anova.lmrob` (`test = "Deviance"` or `"Wald"`) |
+| `cluster.TClust` | [GGMM08](#ggmm08), [FGM12](#fgm12), [FGM13](#fgm13), [CGM97](#cgm97) | Hard assignment, eigenvalue restriction by optimal truncation, tclust's starts and concentration steps |
+| `plots.cluster_plot` | [FGM12](#fgm12) | Clusters, trimmed observations and 97.5% normal ellipses in two variables, as `plot.tclust` |
 | `rank.rank_sum_test`, `rank.signed_rank_test` | [SR86](#sr86), [HHWZ06](#hhwz06), [W45](#w45), [P59](#p59) | Exact conditional distribution of doubled midranks; two-sided by distance from the mean; `wilcox.exact`, coin exact tests |
 | `depth.regression_depth` | [RH99](#rh99), [RS98](#rs98) | Exact with one regressor; full direction enumeration for general-position data, or sampled approximation |
 | `depth.halfspace_median` | [RR98](#rr98) | Centroid of the deepest bivariate region; random subset when more than `max_samples` rows |
@@ -521,6 +525,41 @@ Pratt, J. W. (1959). *Remarks on Zeros and Ties in the Wilcoxon Signed Rank
 Procedures*. Journal of the American Statistical Association, **54**(287),
 655–667.
 
+(r82)=
+### R82
+Ronchetti, E. (1982). *Robust Testing in Linear Models: The Infinitesimal
+Approach*. PhD thesis, ETH Zürich.
+
+(hrrs86)=
+### HRRS86
+Hampel, F. R., Ronchetti, E. M., Rousseeuw, P. J. and Stahel, W. A. (1986).
+*Robust Statistics: The Approach Based on Influence Functions*. Wiley.
+Section 7.3 gives the robust likelihood-ratio type test.
+
+(ggmm08)=
+### GGMM08
+García-Escudero, L. A., Gordaliza, A., Matrán, C. and Mayo-Iscar, A. (2008).
+*A General Trimming Approach to Robust Cluster Analysis*. The Annals of
+Statistics, **36**(3), 1324–1345.
+
+(fgm12)=
+### FGM12
+Fritz, H., García-Escudero, L. A. and Mayo-Iscar, A. (2012). *tclust: An R
+Package for a Trimming Approach to Cluster Analysis*. Journal of Statistical
+Software, **47**(12), 1–26.
+
+(fgm13)=
+### FGM13
+Fritz, H., García-Escudero, L. A. and Mayo-Iscar, A. (2013). *A Fast Algorithm
+for Robust Constrained Clustering*. Computational Statistics & Data Analysis,
+**61**, 124–136. The optimal truncation of the eigenvalues.
+
+(cgm97)=
+### CGM97
+Cuesta-Albertos, J. A., Gordaliza, A. and Matrán, C. (1997). *Trimmed
+k-Means: An Attempt to Robustify Quantizers*. The Annals of Statistics,
+**25**(2), 553–576.
+
 (r-software)=
 ## R software
 
@@ -533,10 +572,11 @@ Package manuals and source identify the software conventions:
 [RobStatTM](https://cran.r-project.org/package=RobStatTM),
 [Rfit](https://cran.r-project.org/package=Rfit),
 [exactRankTests](https://cran.r-project.org/package=exactRankTests),
-[coin](https://cran.r-project.org/package=coin).
+[coin](https://cran.r-project.org/package=coin),
+[tclust](https://cran.r-project.org/package=tclust).
 The frozen JSON fixtures in `tests/data` record the versions that produced
 the reference values for the univariate, multivariate, GLM, nonlinear,
-depth and rank comparisons. These fixtures retain their software provenance as
+depth, rank and clustering comparisons. These fixtures retain their software provenance as
 supplementary regression checks. Mathematical definitions, assumptions and
 independent calculations determine acceptance; reproducing an external
 number is not a correctness requirement.

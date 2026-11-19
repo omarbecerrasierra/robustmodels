@@ -69,6 +69,8 @@ attributes with a trailing underscore. For `covMcd`:
 | `init.S$coefficients` | `s_intercept_`, `s_coef_` |
 | `vcov(fit)` | `cov_params_` |
 | `summary(fit)` | `summary()`, `std_errors_`, `t_values_`, `p_values_` |
+| `anova(fit, reduced_formula, test = "Deviance")` | `regression.mm_test(mm, X, y, columns)` |
+| `anova(fit, reduced_formula, test = "Wald")` | `regression.mm_test(mm, X, y, columns, test="wald")` |
 
 | `ltsReg` result | robustmodels attribute |
 | --- | --- |
@@ -112,6 +114,7 @@ See the [depth guide](depth.md) for approximations and center conventions.
 | `Rfit::rfit(y ~ X)` | `rank.RankRegressor().fit(X, y)` |
 | `summary(rfit_fit)` | `summary()`, `std_errors_`, `t_values_`, `p_values_` |
 | `Rfit::drop.test(full, reduced)` | `rank.drop_test(full, reduced)` |
+| `Rfit::oneway.rfit(y, g)` | `rank.rank_anova(y, g)` (the overall test, without pairwise comparisons) |
 | `exactRankTests::wilcox.exact(x, y)`, `coin::wilcox_test(..., distribution = "exact")` | `rank.rank_sum_test(x, y)` |
 | `exactRankTests::wilcox.exact(x)`, `wilcox.exact(x, y, paired = TRUE)` | `rank.signed_rank_test(x)`, `rank.signed_rank_test(x, y)` |
 | `coin::wilcoxsign_test(..., distribution = "exact")` | `rank.signed_rank_test(x, y, zero_method="pratt")` |
@@ -151,6 +154,23 @@ and can stop at different directions. `Wilks.test` simulates its null
 distribution with FAST-MCD and `manova` with the deterministic MCD, so the
 statistic and p-value can differ; see the
 [multivariate guide](multivariate.md#numerical-limits-and-sources).
+
+## Robust clustering
+
+| R | robustmodels |
+| --- | --- |
+| `tclust::tclust(X, k, alpha)` | `cluster.TClust(k, alpha=alpha).fit(X)` |
+| `tclust::tkmeans(X, k, alpha)` | `cluster.TClust(k, alpha=alpha, restr_factor=1, equal_weights=True).fit(X)` |
+| `plot(tclust_fit)` | `plots.cluster_plot(model, X)` |
+
+| `tclust` result | `TClust` attribute |
+| --- | --- |
+| `cluster` (0 for trimmed) | `labels_` (-1 for trimmed, zero-based clusters) |
+| `centers`, `cov`, `weights` | `means_` (clusters in rows), `covariances_`, `weights_` |
+| `obj` | `objective_` |
+
+The `restr = "deter"` and `"GPCM"` restrictions, `opt = "MIXT"` and
+`ctlcurves` are not implemented.
 
 ## Diagnostic plots
 
