@@ -49,7 +49,9 @@ def test_mcd_reweighting_and_distances_are_invariant_to_variable_units():
     np.testing.assert_array_equal(second.support_, first.support_)
     np.testing.assert_allclose(second.covariance_ / np.outer(units, units), first.covariance_)
     np.testing.assert_allclose(second.dist_, first.dist_)
-    np.testing.assert_allclose(second.precision_ @ second.covariance_, np.eye(2), atol=1e-7)
+    # Compare in the original units: entry (i, j) of P C carries units_j / units_i.
+    product = second.precision_ @ second.covariance_
+    np.testing.assert_allclose(product * units[:, None] / units, np.eye(2), atol=1e-12)
 
 
 def masked_problems():

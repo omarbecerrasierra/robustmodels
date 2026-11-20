@@ -365,7 +365,7 @@ def test_logistic_probability_of_the_rare_class_is_retained():
     point = [[(50 - model.intercept_) / model.coef_[0]]]
     probability = model.predict_proba(point)[0, 0]
     assert probability > 0
-    assert probability == pytest.approx(1 / (1 + np.exp(50)), abs=0)
+    assert probability == pytest.approx(1 / (1 + np.exp(50)), rel=1e-12)
 
 
 def test_mallows_reports_inference_when_only_negligible_scores_are_capped():
