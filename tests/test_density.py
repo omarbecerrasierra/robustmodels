@@ -4,16 +4,25 @@ Reference values: tests/data/r_density.json (R's ks; its "meta" entry records th
 options). ks's selectors stop their BFGS search earlier: our criteria are lower at our matrices.
 """
 
+import itertools
 import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 from numpy.polynomial.hermite_e import hermegauss, hermeval
+from scipy import integrate, stats
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
 from robustmodels import density
-from robustmodels.density import KernelDensity, kde_test, plugin_bandwidth, scv_bandwidth
+from robustmodels.density import (
+    KernelDensity,
+    kde_multiscale_test,
+    kde_permutation_test,
+    kde_test,
+    plugin_bandwidth,
+    scv_bandwidth,
+)
 
 R = json.loads((Path(__file__).parent / "data" / "r_density.json").read_text())
 X2, X3 = np.array(R["x2"]), np.array(R["x3"])
@@ -148,6 +157,147 @@ def test_kde_test_matches_ks():
     assert 0 < one.pvalue < 1
 
 
+def test_kde_permutation_by_quadrature_and_exhaustive_assignments():
+    x = np.array([-2.0, -1.0, -1.0, 0.5, 0.5, 2.0, 3.0])
+    h = 0.5
+
+    def distance(indices):
+        keep = np.isin(np.arange(len(x)), indices)
+
+        def integrand(t):
+            pdf = stats.norm.pdf(x, loc=t, scale=h)
+            return (pdf[keep].mean() - pdf[~keep].mean()) ** 2
+
+        return integrate.quad(integrand, -10, 10, epsabs=1e-11)[0]
+
+    observed = distance((0, 1, 2))
+    null = [distance(i) for i in itertools.combinations(range(len(x)), 3)]
+    expected = np.mean(np.asarray(null) >= observed - 1e-11)
+    result = kde_permutation_test(x[:3], x[3:], bandwidth=h, n_resamples=np.inf)
+    assert result.statistic == pytest.approx(observed, rel=1e-10)
+    assert result.pvalue == pytest.approx(expected)
+
+
+def test_kde_permutation_calibration_and_bandwidth():
+    x = np.array([-2.0, -1.0, 1.0, 2.0])
+    with pytest.raises(ValueError, match="degenerate normal calibration"):
+        kde_test(x, x)
+    assert kde_permutation_test(x, x) == (0, 1)
+    with pytest.raises(ValueError, match="singular"):
+        kde_permutation_test(np.ones(4), np.ones(4))
+    assert kde_permutation_test(np.ones(4), np.ones(4), bandwidth=1.0) == (0, 1)
+    result = kde_permutation_test(x, x + 2, n_resamples=17, random_state=1)
+    scaled = kde_permutation_test(3 * x, 3 * (x + 2), n_resamples=17, random_state=1)
+    assert scaled.statistic == pytest.approx(result.statistic / 3)
+    assert scaled.pvalue == result.pvalue
+    assert result.pvalue * 18 == pytest.approx(round(result.pvalue * 18))
+    with pytest.raises(ValueError, match="n_resamples"):
+        kde_permutation_test(x, x, n_resamples=0)
+
+
+def _multiscale_reference(X, H, scales, assignments):
+    """Compute every discrepancy from Gaussian densities and group sums."""
+    offsets = X[:, None] - X[None, :]
+    columns = []
+    for scale in scales:
+        kernel = stats.multivariate_normal.pdf(offsets, cov=2 * scale**2 * H)
+        discrepancies = []
+        for a in assignments:
+            b = np.setdiff1d(np.arange(len(X)), a)
+            within_a = kernel[np.ix_(a, a)].mean()
+            within_b = kernel[np.ix_(b, b)].mean()
+            between = kernel[np.ix_(a, b)].mean()
+            discrepancies.append(within_a + within_b - 2 * between)
+        columns.append(discrepancies)
+    discrepancies = np.column_stack(columns)
+    standardized = (discrepancies - discrepancies.mean(axis=0)) / discrepancies.std(axis=0)
+    maximum = standardized.max(axis=1)
+    return maximum[0], np.mean(maximum >= maximum[0] - 1e-12)
+
+
+@pytest.mark.parametrize("budget", [7, 35, np.inf])
+def test_kde_multiscale_matches_joint_permutation_reference(budget):
+    X = np.array([[-2.0, 0], [-1, 2], [-1, 2], [0.5, -1], [0.5, 3], [2, -2], [3, 1]])
+    H = np.array([[0.7, 0.3], [0.3, 1.5]])
+    scales = [0.5, 1, 2]
+    n1, seed = 3, 17
+    if budget >= 35:
+        assignments = list(itertools.combinations(range(len(X)), n1))
+    else:
+        rng = np.random.default_rng(seed)
+        assignments = [np.arange(n1)] + [rng.permutation(len(X))[:n1] for _ in range(budget)]
+    expected = _multiscale_reference(X, H, scales, assignments)
+    result = kde_multiscale_test(
+        X[:n1], X[n1:], bandwidth=H, scales=scales, n_resamples=budget, random_state=seed
+    )
+    assert result.statistic == pytest.approx(expected[0], rel=1e-12)
+    assert result.pvalue == expected[1]
+
+
+def test_kde_multiscale_exact_level_over_assignments_with_ties():
+    X = np.array([-2.0, -1.0, -1.0, 0.5, 0.5, 2.0, 3.0])
+    pvalues = []
+    for group in itertools.combinations(range(len(X)), 3):
+        inside = np.isin(np.arange(len(X)), group)
+        pvalues.append(kde_multiscale_test(X[inside], X[~inside], n_resamples=np.inf).pvalue)
+    pvalues = np.array(pvalues)
+    assert np.min(pvalues) >= 1 / len(pvalues)
+    for alpha in np.unique(pvalues):
+        assert (pvalues <= alpha).mean() <= alpha
+
+
+@pytest.mark.parametrize("budget", [17, 145, np.inf])
+def test_kde_multiscale_one_band_matches_single_band_pvalue_and_rng(budget):
+    x = np.array([-2.0, -1.0, 0.0, 1.0])
+    y = np.array([0.5, 2.0, 3.0, 4.0, 5.0, 6.0])
+    rng_single = np.random.default_rng(16)
+    rng_multi = np.random.default_rng(16)
+    single = kde_permutation_test(x, y, n_resamples=budget, random_state=rng_single)
+    multi = kde_multiscale_test(x, y, scales=[1], n_resamples=budget, random_state=rng_multi)
+    assert single.pvalue == multi.pvalue
+    rng_many = np.random.default_rng(16)
+    many = kde_multiscale_test(x, y, n_resamples=budget, random_state=rng_many)
+    assert kde_multiscale_test(x, y, n_resamples=budget, random_state=16) == many
+    assert rng_single.random() == rng_multi.random() == rng_many.random()
+
+
+def test_kde_multiscale_affine_invariance_and_scale_order():
+    rng = np.random.default_rng(26)
+    x = rng.normal(size=(9, 2))
+    y = rng.normal(size=(11, 2)) * [1, 3]
+    transform = np.array([[3.0, 0.5], [-1.0, 0.7]])
+    base = kde_multiscale_test(x, y, scales=[0.25, 1, 4], n_resamples=79, random_state=8)
+    changed = kde_multiscale_test(
+        x @ transform + 10, y @ transform + 10, scales=[4, 1, 0.25], n_resamples=79, random_state=8
+    )
+    assert changed.statistic == pytest.approx(base.statistic, rel=1e-12)
+    assert changed.pvalue == base.pvalue
+
+
+def test_kde_multiscale_omits_constant_scales():
+    assert kde_multiscale_test(np.ones(3), np.ones(4), bandwidth=1) == (0, 1)
+    x, y = [-3, -2, -1], [0, 1, 2, 3]
+    wide = 1e300  # all kernel entries become 1 at this scale
+    assert kde_multiscale_test(x, y, scales=[1, wide], n_resamples=np.inf) == kde_multiscale_test(
+        x, y, scales=[1], n_resamples=np.inf
+    )
+
+
+@pytest.mark.parametrize("scales", [[], 1, [[1]], [0], [-1], [np.inf], [np.nan]])
+def test_kde_multiscale_checks_scales(scales):
+    with pytest.raises(ValueError, match="scales"):
+        kde_multiscale_test([0, 1], [2, 3], scales=scales)
+
+
+def test_kernel_derivatives_when_the_determinant_underflows():
+    d, h = 10, 1e-20
+    kde = KernelDensity(h).fit(np.zeros((2, d)))
+    point = np.zeros((1, d))
+    pdf = (h * np.sqrt(2 * np.pi)) ** -d
+    np.testing.assert_allclose(kde.gradient(point), 0)
+    np.testing.assert_allclose(kde.hessian(point)[0] / pdf * h**2, -np.eye(d), rtol=1e-12)
+
+
 def test_input_checks():
     with pytest.raises(ValueError, match="bandwidth must be one of"):
         KernelDensity("silverman").fit(X2)
@@ -155,6 +305,16 @@ def test_input_checks():
         KernelDensity(-1.0).fit(X2)
     with pytest.raises(ValueError, match="positive definite"):
         KernelDensity([[1.0, 2.0], [2.0, 1.0]]).fit(X2)
+    with pytest.raises(ValueError, match="symmetric"):
+        KernelDensity(np.array([[1, 0], [0.5, 1]]) * 1e-12).fit(X2)
+    with pytest.raises(ValueError, match="finite"):
+        KernelDensity([[1, 0], [0, np.inf]]).fit(X2)
+    for h in (1e200, 1e-200):
+        with pytest.raises(ValueError, match="squared bandwidth"):
+            KernelDensity(h).fit(X2)
+    for order in (1.0, True):
+        with pytest.raises(ValueError, match="deriv_order"):
+            plugin_bandwidth(X2, deriv_order=order)
     with pytest.raises(ValueError, match="deriv_order"):
         KernelDensity(deriv_order=3).fit(X2)
     with pytest.raises(ValueError, match="deriv_order"):

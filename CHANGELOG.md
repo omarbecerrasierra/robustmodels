@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.6.0 (2026-11-20)
+
+### Added
+
+- Add `density.kde_permutation_test`, a two-sample test using the integrated
+  squared difference of Gaussian KDEs with a common bandwidth.
+- Add `density.kde_multiscale_test`, a two-sample test with joint
+  permutation calibration across several Gaussian bandwidths.
+- Add a known log-mean `offset` to `MallowsPoissonRegressor.fit` and
+  `predict` for unequal exposures. Preserve logistic tail probabilities
+  and withhold Mallows Poisson inference above the numerical predictor cap.
+- Add `datasets` with five classic data sets of robust statistics (stars of
+  CYG OB1, Hawkins–Bradu–Kass, wood gravity, stack loss and hemophilia), and
+  a guide that recovers their documented outliers with summaries, tests and
+  diagnostic plots.
+- Show an executable example for every function on the diagnostic plots
+  page, including the bagplot, clustering, density and coefficient plots.
+
+### Faster
+
+- Fit `RankRegressor` from a BFGS pilot and a linear program on the
+  closest residual pairs only, with the other pairs as a linear term
+  (Portnoy & Koenker 1997). A certificate that no excluded pair changes
+  sign keeps the fit exact; n = 2000 takes about a second instead of minutes.
+- Reuse the implicit Qn selector for the Wilcoxon scale on large samples,
+  with linear auxiliary memory and the same treatment of ties. Use
+  condensed SciPy distances and NumPy partitioning for small samples.
+
+### Fixed
+
+- Fix `rank_anova` and `drop_test` results that depended on the group labels
+  or contrasts: when the rank fit is not unique, return the minimizer with
+  the smallest residual sum of squares.
+- Validate response alignment and design nesting in `rank.drop_test`.
+  Handle one residual degree of freedom and report unavailable inference when
+  the residual scale cannot be estimated.
+- Accept NumPy scalar shifts in `signed_rank_test` without overflow warnings
+  and reject booleans.
+- Preserve paired signed-rank differences when large terms cancel or a
+  partial sum overflows. Reject differences that overflow float64.
+- Reject degenerate normal calibration in `kde_test` and validate fixed
+  bandwidths independently of their scale. Normalize KDE derivatives without
+  forming the determinant.
+- Preserve log-concave density and CDF calculations at extreme scales.
+  Handle small samples and exact fits in score matching regression.
+- Test covariance rank on the correlation scale so changes in measurement
+  units do not create spurious singular fits. Compute PCA residuals before
+  restoring the original coordinate origin.
+- Preserve finite univariate estimates at extreme scales. Compute halfspace
+  depth within the affine span of lower-dimensional data and calibrate
+  outlyingness using the finite training scores.
+- Keep TCLUST assignments, weights and likelihood consistent at the
+  iteration limit and report `converged_`. Fit in normalized units.
+- Validate the data and tested columns in `mm_test`. Compute nonlinear
+  regression and diagnostic OLS uncertainty without squaring the design's
+  condition number and reject unidentified OLS reference intervals.
+- Share the package's MAD between scale estimation, Stahel–Donoho
+  projections and outlyingness cutoffs. Preserve finite medians when
+  intermediate sums or deviations overflow.
+- Scale the shared least absolute deviations solver internally so that
+  changing regression units preserves the optimization problem numerically.
+- Use SciPy's trimmed mean, softmax, ordinal ranks and cumulative
+  trapezoidal integrals. Reuse OGK's tau location from `location` and share
+  the adjusted fences, score weights and zero-scale division rules.
+
 ## 0.5.0 (2026-11-19)
 
 - Add `density`: `KernelDensity`, kernel density estimation with a normal

@@ -3,8 +3,8 @@
 Mathematical definitions, assumptions and independently calculated consequences
 are the acceptance criteria for robustmodels. The theoretical audit dated
 2026-11-13 found reproducible errors even though the earlier software tests
-passed. The corrected counterexamples and source equations are recorded in the
-[scientific audit report](https://github.com/omarbecerrasierra/robustmodels/blob/main/reports/Auditor%C3%ADa%20te%C3%B3rica%20de%20robustmodels.md).
+passed. The corrected counterexamples are recorded below, with the source
+equations in the [method references](references.md).
 
 These checks support the cases described here. They do not prove every
 floating-point input correct, certify global optima of randomized searches,
@@ -68,6 +68,20 @@ performed for this project and from assumptions that were not fully verified.
 The tests preserve these counterexamples as regressions of the definitions.
 No numerical agreement with an external program was required to choose a fix.
 
+## Follow-up checks across modules
+
+| Area | Counterexample and independent check |
+| --- | --- |
+| Location and scale | Duplicates at `1.2e308` have that location and zero spread. MAD, tau and M-scale reproduce the spread of a fixed sample after changes of unit by `1e-300` and `1e308`. They retain a positive scale when one huge outlier is added to a sample near zero. Existing order-statistic tests still cover Qn, Sn and Pn. |
+| Covariance | Rescaling one predictor by `1e-9` used to make an MCD fit appear singular. The corrected fit preserves reweighting, scatter after reversing the unit change, and squared distances. |
+| PCA and classification | An ordinary orthogonal residual next to a `1e16` origin agrees with the direct projection in centered coordinates. The Gaussian discriminant checks use direct class densities. Mean-vector tests retain their documented approximate calibration. |
+| Depth and outlyingness | On a line embedded in three dimensions, projected Tukey depths equal their univariate counts. Points off the line have depth zero. A tied sample with seven infinite directional scores out of ten now yields a finite cutoff and flags all seven. |
+| Clustering | Changing the units by `1e-8` preserves the TCLUST partition. Direct Gaussian log densities reproduce the objective and trimming threshold of the returned parameters even with one final iteration. |
+| Linear and nonlinear regression | MM tests reject mismatched designs, permuted responses and fractional column numbers. A known Jacobian with a small but identifiable column yields the expected ratio of variances. |
+| Generalized linear models | For Poisson with exposure, direct summation of the conditional score over counts reproduces the estimating equation. A constant offset shifts the intercept by the opposite amount and preserves fitted means. A Poisson predictor above the cap suppresses ordinary inference; a logistic leverage point fitted beyond it keeps its standard errors. |
+| Rank methods | An eight-pair example verifies that a unit shift survives the cancellation of two equal large measurements. A second example checks overflow in a partial sum with a representable final difference. The Wilcoxon scale uses condensed distances for small samples and the implicit Qn selector for large samples. Independent enumeration verifies the window and inclusive count, including ties. The slope fit solves the linear program on the closest residual pairs and matches the program on all pairs to 1e-15 for Cauchy errors, ties, binary and duplicated predictors, leverage and units of `1e±200`. With group indicators the minimizer is not unique: the program on all pairs changed `rank_anova` under relabeling in 18 of 30 samples. The least squares choice among the minimizers changes it in none, nor under a change of contrasts. |
+| Diagnostic plots | Classical reference intervals require a full rank design and positive residual degrees of freedom. Plot tests evaluate the numerical coordinates and intervals. |
+
 ## Assumptions and computational limits
 
 **GLM and nonlinear inference.** The Mallows covariance is conditional on the
@@ -107,12 +121,36 @@ must be preserved. Finite MCD/MVE/S/MM/LTS searches can select local solutions.
 The audit found no demonstrated reason to change the existing covariance
 formulas; it did not certify every global optimum or breakdown theorem.
 
+**Rank regression and leverage.** With NumPy seed 326, generate 80 standard
+normal predictors and responses `1 + 2*x + 0.3*t3`. Adding three observations
+with predictors `[40, 41, 42]` and responses `[3, 4, 5]` moved the Wilcoxon
+slope from 2.021 to 0.107. LTS and MM with seed 0 stayed between 2.014 and
+2.019 before and after adding the three rows. This is a leverage example,
+consistent with the documented assumptions for Wilcoxon regression.
+
 **Density estimation and shape constraints.** The bandwidth selectors
 minimize estimates of the integrated squared error of a smooth density; they
 do not resist outliers, which get their own bumps. `kde_test` relies on an
 asymptotic normal approximation and is conservative: with two normal samples
 of 100 or 300 observations in two variables it rejected 1.5% and 0.9% of
 1000 simulated tests at the 5% level (3.6% and 3.2% at 10%), as R's ks.
+The permutation alternative uses a common pooled bandwidth, with calibration
+valid under exchangeability. Independent quadrature and exhaustive label
+assignments verify the statistic and p-value on a small tied sample.
+
+In 300 simulations per scenario with independent samples of sizes 70 and
+100 in two dimensions, the tests rejected at nominal 5% as follows:
+
+| Model | Normal calibration | Permutation calibration |
+| --- | ---: | ---: |
+| Both samples standard normal | 4/300 (1.3%) | 13/300 (4.3%) |
+| Second sample has twice the second-coordinate standard deviation | 201/300 (67.0%) | 277/300 (92.3%) |
+
+The simulation used NumPy's default generator seeded at 217 and 199 random
+assignments per test, sharing the same generator across the samples and
+the permutations. The two tests use different bandwidths and statistics.
+This experiment measures level and power in these specific scenarios.
+
 `LogConcaveDensity` assumes log-concavity; multimodal or heavy-tailed data
 violate it. `ScoreMatchingRegressor` estimates the score from the same
 residuals it fits, without the sample splitting of its theory. In 400

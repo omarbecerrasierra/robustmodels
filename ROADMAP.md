@@ -43,7 +43,8 @@ Suggestions and use cases are welcome in
 - **Robust clustering:** TCLUST and trimmed k-means.
 - **Multivariate density estimation:** kernel density estimation with a full
   bandwidth matrix (plug-in and smoothed cross-validation), density
-  derivatives, highest density regions and a two-sample test.
+  derivatives, highest density regions and two-sample tests with permutation
+  or normal calibration.
 - **Shape-constrained estimation:** univariate log-concave density estimation
   and regression by antitonic score matching.
 - **Generalized linear models:** Mallows logistic and Poisson, Bianco–Yohai
@@ -59,8 +60,19 @@ Suggestions and use cases are welcome in
 
 ## Later stages
 
-The planned stages are available. The next ones will be chosen from the
-use cases and suggestions in
+- Benchmark time, memory and statistical calibration for the existing
+  estimators.
+- Study high-breakdown regression by ranks for contamination in the predictors.
+  Compare against Wilcoxon, LTS and MM regression on the same samples.
+- Use the density derivatives to evaluate mode finding by mean shift. Check
+  recovery of known modes under different bandwidths before adding ridges.
+- Study finite-sample calibration for Hotelling's T² and robust MANOVA,
+  including group imbalance, dimension and contamination. State the null
+  model before comparing any recalibration.
+- Benchmark diagnostics for cellwise contamination and missing values
+  against existing implementations before choosing an estimator to add.
+
+Use cases and suggestions are welcome in
 [Issues](https://github.com/omarbecerrasierra/robustmodels/issues).
 
 ## Across all stages

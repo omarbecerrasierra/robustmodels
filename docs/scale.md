@@ -90,6 +90,9 @@ The small-sample factors are fitted or simulated approximations; they do not
 make every finite sample unbiased. They target normal data and the documented
 center/quantile conventions. MAD's finite factors assume the sample median as
 center; they are not calibrated for an arbitrary supplied center.
+MAD selects the middle values with NumPy and averages them without
+overflow. It rescales by powers of two to retain small deviations when the
+measurements span very different magnitudes.
 
 Qn uses the exact normal-quantile constant instead of robustbase's rounded
 2.21914. robustbase's Qn C routine also casts some selection pivots to single

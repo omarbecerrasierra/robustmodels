@@ -54,18 +54,30 @@ it cannot be reached, and say why in the comment.
 | --- | --- | --- |
 | `location.py` | Location estimators | `scale.py`, `_validation.py` |
 | `scale.py` | Scale, skewness, correction factors and pairwise selection | `_validation.py` |
-| `covariance.py` | Covariance estimators and their fitting steps | `outliers.py`, `scale.py`, `_validation.py` |
+| `covariance.py` | Covariance estimators and their fitting steps | `location.py`, `outliers.py`, `scale.py`, `_validation.py` |
 | `multivariate.py` | Principal components, discriminant analysis and tests on mean vectors | `covariance.py`, `_validation.py` |
+| `cluster.py` | Trimmed clustering | `_validation.py` |
+| `regression.py` | Linear and nonlinear regression and inference | `covariance.py`, `scale.py`, `_validation.py` |
 | `glm.py` | Robust logistic and Poisson models and inference | `regression.py`, `covariance.py`, `scale.py`, `_validation.py` |
+| `rank.py` | Rank regression and conditional rank tests | `regression.py`, `scale.py`, `_validation.py` |
+| `density.py` | Kernel density estimation, bandwidths, derivatives, regions and tests | `_validation.py` |
+| `shape.py` | Log-concave density and score matching regression | `rank.py`, `regression.py`, `scale.py`, `_validation.py` |
 | `depth.py` | Halfspace and regression depth, Tukey median and bagplot statistics | `outliers.py`, `_validation.py` |
 | `outliers.py` | Outlier detectors by projection outlyingness | `scale.py`, `_validation.py` |
-| `plots.py` | Matplotlib diagnostics, adjusted boxplots and bagplots | `covariance.py`, `depth.py`, `scale.py`, `_validation.py` |
-| `regression.py` | Linear and nonlinear regression and inference | `covariance.py`, `scale.py`, `_validation.py` |
-| `_validation.py` | Input checks and the random generator helper | None |
+| `plots.py` | Matplotlib diagnostics, adjusted boxplots and bagplots | `covariance.py`, `depth.py`, `outliers.py`, `scale.py`, `_validation.py` |
+| `datasets.py` | Classic data sets, stored as CSV files in `data/` | None |
+| `_validation.py` | Input checks, random generator and numerical helpers | None |
 
 Each method and its steps stay together. `__init__.py` exposes the public
 modules. Update the relevant docstrings and user guide when changing public
 behavior, including numerical limits and differences from reference software.
+
+Use public NumPy, SciPy and scikit-learn functions for operations they already
+provide. Reuse an existing estimator or formula from robustmodels when it
+matches the method's definition. Check divisors, ties, weights and numerical
+limits before substituting an implementation.
+Use named intermediate values when they make it easier to follow a formula
+or check the order of an algorithm's steps.
 
 ## Release checklist
 

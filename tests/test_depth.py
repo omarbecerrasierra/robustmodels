@@ -116,6 +116,15 @@ def test_degenerate_deepest_regions(X, center):
         np.testing.assert_array_equal(fit.outliers, [False] * 6 + [True, True])
 
 
+def test_depth_on_an_affine_line_in_three_dimensions():
+    X = np.column_stack([np.arange(5), np.full(5, 3), np.zeros(5)])
+    np.testing.assert_allclose(
+        halfspace_depth(X, [[2, 3, 0], [2, 4, 0], [4, 3, 0]]), [0.6, 0.0, 0.2]
+    )
+    np.testing.assert_array_equal(halfspace_depth(X, [[2, 4, 0]]), [0.0])
+    np.testing.assert_array_equal(halfspace_depth(np.ones((4, 3)), [[1, 1, 1], [1, 2, 1]]), [1, 0])
+
+
 def test_seeded_subsampling_and_validation():
     X = np.random.default_rng(7).normal(size=(35, 2))
     a = bagplot_stats(X, max_samples=20, random_state=0)

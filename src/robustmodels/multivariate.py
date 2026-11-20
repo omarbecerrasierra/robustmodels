@@ -10,7 +10,7 @@ vectors and return named tuples.
 from typing import NamedTuple
 
 import numpy as np
-from scipy import stats
+from scipy import special, stats
 from scipy.stats import chi2
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 from sklearn.utils.multiclass import check_classification_targets
@@ -64,9 +64,9 @@ class _RobustPCA(TransformerMixin, BaseEstimator):
         score_distances, orthogonal_distances : ndarray of shape (n_samples,)
         """
         scores = self.transform(X)
-        score = np.sqrt(np.sum(scores**2 / self.explained_variance_, axis=1))
-        residuals = np.asarray(X, dtype=float) - self.inverse_transform(scores)
-        return score, np.linalg.norm(residuals, axis=1)
+        score = np.hypot.reduce(scores / np.sqrt(self.explained_variance_), axis=1)
+        residuals = (np.asarray(X, dtype=float) - self.location_) - scores @ self.components_
+        return score, np.hypot.reduce(residuals, axis=1)
 
     def _set_components(self, location, components, variances, X, rank):
         largest = np.abs(components).argmax(axis=1)
@@ -527,9 +527,7 @@ class _RobustDiscriminant(ClassifierMixin, BaseEstimator):
 
     def predict_proba(self, X):
         """Posterior probabilities of the classes under the normal model."""
-        scores = self._scores(X)
-        likelihood = np.exp(scores - scores.max(axis=1, keepdims=True))
-        return likelihood / likelihood.sum(axis=1, keepdims=True)
+        return special.softmax(self._scores(X), axis=1)
 
 
 class RobustLDA(_RobustDiscriminant):

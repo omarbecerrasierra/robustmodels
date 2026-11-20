@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.stats import multivariate_normal
 from sklearn.metrics import adjusted_rand_score
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
@@ -100,6 +101,28 @@ def test_tclust_reference():
     trimmed = TClust(3, alpha=0.05, restr_factor=1, equal_weights=True, random_state=0).fit(X)
     assert same_partition(trimmed.labels_, np.array(R["tk_cluster"]) - 1)
     np.testing.assert_allclose(trimmed.means_, R["tk_centers"], atol=1e-10)
+
+
+def test_tclust_unit_equivariance_and_likelihood_at_iteration_limit():
+    X = np.random.default_rng(71).normal(size=(40, 2))
+    options = dict(n_init=20, max_iter=1, random_state=0)
+    fit = TClust(**options).fit(X)
+    units = 1e-8
+    small = TClust(**options).fit(X * units)
+    assert not small.converged_
+    assert same_partition(small.labels_, fit.labels_)
+    kept = small.labels_ >= 0
+    scores = np.column_stack(
+        [
+            np.log(w) + multivariate_normal.logpdf(X * units, mean=mu, cov=cov)
+            for w, mu, cov in zip(small.weights_, small.means_, small.covariances_, strict=True)
+        ]
+    )
+    retained = scores[kept, small.labels_[kept]]
+    assert small.objective_ == pytest.approx(retained.sum())
+    assert small.threshold_ == pytest.approx(retained.min())
+    assert small.objective_ == pytest.approx(fit.objective_ - kept.sum() * 2 * np.log(units))
+    np.testing.assert_array_equal(small.predict(X * units), small.labels_)
 
 
 def test_input_checks_and_degenerate_data():

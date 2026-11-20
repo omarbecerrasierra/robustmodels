@@ -17,11 +17,10 @@ from sklearn.base import BaseEstimator, OutlierMixin
 from sklearn.utils.validation import check_is_fitted, validate_data
 
 from ._validation import as_generator, check_count
-from .scale import medcouple
+from .scale import MAD_CONSTANT, _median_and_mad, medcouple
 
 __all__ = ["AdjustedOutlyingness", "DirectionalOutlyingness", "StahelDonohoOutlyingness"]
 
-_MAD = 1 / stats.norm.ppf(0.75)  # makes the MAD consistent at the normal model
 _DO_TUNING = 2.1  # Rousseeuw, Raymaekers & Hubert (2018): 85% efficiency
 # alpha: integral over (0, inf) of rho(t) = min((t / c)^2, 1) against the normal density
 _DO_ALPHA = (
@@ -132,8 +131,7 @@ class StahelDonohoOutlyingness(_ProjectionOutlyingness):
     """
 
     def _fit_projections(self, projections):
-        self.centers_ = np.median(projections, axis=0)
-        self.scales_ = _MAD * np.median(np.abs(projections - self.centers_), axis=0)
+        self.centers_, self.scales_ = _median_and_mad(projections)
 
     def _outlyingness(self, projections):
         return _ratio(np.abs(projections - self.centers_), self.scales_)
@@ -282,7 +280,7 @@ class DirectionalOutlyingness(_ProjectionOutlyingness):
 
 def _half_scale(deviations):
     """One-step M-scale of each column of nonnegative deviations from the median."""
-    initial = _MAD * np.median(deviations, axis=0)
+    initial = MAD_CONSTANT * np.median(deviations, axis=0)
     rho = np.minimum((_ratio(deviations, initial) / _DO_TUNING) ** 2, 1)
     return initial * np.sqrt(rho.mean(axis=0) / (2 * _DO_ALPHA))
 
@@ -352,16 +350,24 @@ def _ratio(distance, scale):
 def _whiskers(y):
     """Distances from the median (0) to the adjusted boxplot whiskers of ``y``."""
     q1, q3 = np.percentile(y, [25, 75], method="hazen")
+    lower, upper = _adjusted_fences(q1, q3, medcouple(y))
+    return -y[y >= lower].min(), y[y <= upper].max()
+
+
+def _adjusted_fences(q1, q3, mc):
+    """Hubert–Vandervieren fences for the caller's choice of quartiles."""
     iqr = q3 - q1
-    mc = medcouple(y)
     upper = q3 + 1.5 * iqr * np.exp(3 * mc if mc >= 0 else 4 * mc)
     lower = q1 - 1.5 * iqr * np.exp(-4 * mc if mc >= 0 else -3 * mc)
-    return -y[y >= lower].min(), y[y <= upper].max()
+    return lower, upper
 
 
 def _log_cutoff(outlyingness):
     """Cutoff of mrfDepth: a robust 99.5% bound for ``log(0.1 + outlyingness)``."""
-    logs = np.log(0.1 + outlyingness)
-    center = np.median(logs)
-    spread = _MAD * np.median(np.abs(logs - center))
-    return float(np.exp(center + spread * stats.norm.ppf(0.995)) - 0.1)
+    finite = outlyingness[np.isfinite(outlyingness)]
+    if not finite.size:
+        return 0.0
+    logs = np.log(0.1 + finite)
+    center, spread = _median_and_mad(logs)
+    limit = np.log(np.finfo(float).max)
+    return float(np.exp(min(center + spread * stats.norm.ppf(0.995), limit)) - 0.1)

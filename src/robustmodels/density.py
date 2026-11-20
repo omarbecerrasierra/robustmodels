@@ -4,8 +4,8 @@
 normal kernel whose bandwidth is a full matrix ``H``, chosen by
 :func:`plugin_bandwidth` or :func:`scv_bandwidth` for the density or for one of
 its derivatives. ``hdr_level`` gives the density levels that bound highest
-density regions, and :func:`kde_test` tests whether two samples have the same
-density.
+density regions. :func:`kde_permutation_test` and :func:`kde_multiscale_test`
+compare two samples by permutation. :func:`kde_test` uses normal calibration.
 
 The selectors need integrals of products of normal density derivatives. For a
 normal kernel these are sums over pairs of observations of a normal density
@@ -14,20 +14,32 @@ which are computed exactly from their cumulants.
 """
 
 import math
+from copy import deepcopy
 from typing import NamedTuple
 
 import numpy as np
-from scipy import linalg, optimize, special, stats
+from scipy import linalg, optimize, spatial, special, stats
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 from sklearn.utils.validation import check_is_fitted, validate_data
 
-from ._validation import check_option
+from ._validation import as_generator, check_count, check_option
 
-__all__ = ["KDETestResult", "KernelDensity", "kde_test", "plugin_bandwidth", "scv_bandwidth"]
+__all__ = [
+    "KDEMultiscaleResult",
+    "KDEPermutationResult",
+    "KDETestResult",
+    "KernelDensity",
+    "kde_multiscale_test",
+    "kde_permutation_test",
+    "kde_test",
+    "plugin_bandwidth",
+    "scv_bandwidth",
+]
 
 _DERIVATIVES = (0, 1, 2)
 _BLOCK = 2**18  # pairs of observations per block of a double sum
+_MMD_TOL = 16 * np.finfo(float).eps
 
 
 class KernelDensity(BaseEstimator):
@@ -86,37 +98,31 @@ class KernelDensity(BaseEstimator):
     def fit(self, X, y=None):
         """Fit to ``X`` of shape (n_samples, n_features); ``y`` is ignored. Returns ``self``."""
         X = validate_data(self, X, dtype=np.float64, ensure_min_samples=2)
-        check_option("deriv_order", self.deriv_order, _DERIVATIVES)
-        d = X.shape[1]
+        _check_deriv_order(self.deriv_order)
         if isinstance(self.bandwidth, str):
             check_option("bandwidth", self.bandwidth, ("plugin", "scv"))
             select = plugin_bandwidth if self.bandwidth == "plugin" else scv_bandwidth
             H = select(X, deriv_order=self.deriv_order)
-        elif np.ndim(self.bandwidth) == 0:
-            if not 0 < self.bandwidth < np.inf:
-                raise ValueError(f"bandwidth must be positive, got {self.bandwidth!r}")
-            H = float(self.bandwidth) ** 2 * np.eye(d)
         else:
-            H = np.array(self.bandwidth, dtype=float)
-            if H.shape != (d, d) or not np.allclose(H, H.T) or np.linalg.eigvalsh(H)[0] <= 0:
-                raise ValueError(f"bandwidth must be a symmetric positive definite {d}x{d} matrix")
+            H = _fixed_bandwidth(self.bandwidth, X.shape[1])
         self.bandwidth_ = H
         self.X_ = X
         return self
 
     def score_samples(self, X):
         """Log density at each row of ``X``."""
+        root = self._root()
         out = [
-            special.logsumexp(-np.einsum("ijk,ijk->ij", W, W) / 2, axis=1) for W in self._whiten(X)
+            special.logsumexp(-np.einsum("ijk,ijk->ij", W, W) / 2, axis=1)
+            for W in self._whiten(X, root)
         ]
-        d = self.n_features_in_
-        logdet = np.linalg.slogdet(self.bandwidth_)[1]
-        return np.concatenate(out) - np.log(len(self.X_)) - (d * np.log(2 * np.pi) + logdet) / 2
+        return np.concatenate(out) - self._log_scale(root)
 
     def gradient(self, X):
         """Gradient of the density estimate at each row of ``X``, shape (n_queries, n_features)."""
         root = self._root()
-        out = [-np.einsum("ij,ijk->ik", self._kernel(W), W) for W in self._whiten(X)]
+        scale = self._log_scale(root)
+        out = [-np.einsum("ij,ijk->ik", _kernel(W, scale), W) for W in self._whiten(X, root)]
         return linalg.solve_triangular(root, np.concatenate(out).T, lower=True, trans=1).T
 
     def hessian(self, X):
@@ -125,9 +131,10 @@ class KernelDensity(BaseEstimator):
         Returns an array of shape (n_queries, n_features, n_features).
         """
         root, d = self._root(), self.n_features_in_
+        scale = self._log_scale(root)
         out = []
-        for W in self._whiten(X):
-            k = self._kernel(W)
+        for W in self._whiten(X, root):
+            k = _kernel(W, scale)
             out.append(np.einsum("ij,ijk,ijl->ikl", k, W, W) - k.sum(1)[:, None, None] * np.eye(d))
         inverse = linalg.solve_triangular(root, np.eye(d), lower=True)  # L^-1, with H = L L'
         return inverse.T @ np.concatenate(out) @ inverse
@@ -150,24 +157,52 @@ class KernelDensity(BaseEstimator):
         return np.quantile(np.exp(self.score_samples(self.X_)), 1 - prob)
 
     def _root(self):
+        check_is_fitted(self, "bandwidth_")
         return np.linalg.cholesky(self.bandwidth_)
 
-    def _whiten(self, X):
+    def _log_scale(self, root):
+        return (
+            np.log(len(self.X_)) + len(root) / 2 * np.log(2 * np.pi) + np.log(root.diagonal()).sum()
+        )
+
+    def _whiten(self, X, root):
         """Blocks of ``L^-1 (x - X_i)`` for queries ``x`` (rows) and training rows ``X_i``."""
-        check_is_fitted(self)
         X = validate_data(self, X, dtype=np.float64, reset=False)
-        root = self._root()
-        train = linalg.solve_triangular(root, self.X_.T, lower=True).T
-        query = linalg.solve_triangular(root, X.T, lower=True).T
+        origin = self.X_[0]
+        train = linalg.solve_triangular(root, (self.X_ - origin).T, lower=True).T
+        query = linalg.solve_triangular(root, (X - origin).T, lower=True).T
         step = max(1, _BLOCK // len(train))
         for start in range(0, len(query), step):
             yield query[start : start + step, None, :] - train[None, :, :]
 
-    def _kernel(self, W):
-        """Normal kernel ``phi_H`` over ``n`` for whitened differences ``W``."""
-        d = self.n_features_in_
-        scale = len(self.X_) * np.sqrt((2 * np.pi) ** d * np.linalg.det(self.bandwidth_))
-        return np.exp(-np.einsum("ijk,ijk->ij", W, W) / 2) / scale
+
+def _kernel(W, log_scale):
+    """Normal kernel divided by sample size for whitened differences."""
+    return np.exp(-np.einsum("ijk,ijk->ij", W, W) / 2 - log_scale)
+
+
+def _fixed_bandwidth(bandwidth, d):
+    H = np.asarray(bandwidth, dtype=float)
+    if H.ndim == 0:
+        if not 0 < H < np.inf:
+            raise ValueError("bandwidth must be finite and positive")
+        with np.errstate(over="ignore", under="ignore"):
+            variance = float(np.square(H))
+        if not 0 < variance < np.inf:
+            raise ValueError("squared bandwidth must be finite and positive")
+        return variance * np.eye(d)
+    if H.shape != (d, d) or not np.isfinite(H).all() or not np.allclose(H, H.T, rtol=1e-12, atol=0):
+        raise ValueError(f"bandwidth must be a finite symmetric positive definite {d}x{d} matrix")
+    H = H / 2 + H.T / 2
+    if np.linalg.eigvalsh(H)[0] <= 0:
+        raise ValueError("bandwidth must be positive definite")
+    return H
+
+
+def _check_deriv_order(order):
+    if not isinstance(order, (int, np.integer)) or isinstance(order, (bool, np.bool_)):
+        raise ValueError("deriv_order must be an integer in {0, 1, 2}")
+    check_option("deriv_order", order, _DERIVATIVES)
 
 
 def plugin_bandwidth(X, deriv_order=0):
@@ -216,7 +251,7 @@ def plugin_bandwidth(X, deriv_order=0):
     multivariate kernel density derivative estimators. *Statistica Sinica*,
     21(2), 807-840.
     """
-    check_option("deriv_order", deriv_order, _DERIVATIVES)
+    _check_deriv_order(deriv_order)
     Z, root = _sphere(_check_sample(X))
     criterion = _plugin_criterion(Z, deriv_order)
     return root @ _minimize(criterion, _normal_scale(*Z.shape, deriv_order)) @ root
@@ -261,7 +296,7 @@ def scv_bandwidth(X, deriv_order=0):
     smoothed cross-validation. *Australian & New Zealand Journal of
     Statistics*, 53(3), 331-351.
     """
-    check_option("deriv_order", deriv_order, _DERIVATIVES)
+    _check_deriv_order(deriv_order)
     Z, root = _sphere(_check_sample(X))
     criterion = _scv_criterion(Z, deriv_order)
     return root @ _minimize(criterion, _normal_scale(*Z.shape, deriv_order)) @ root
@@ -273,6 +308,213 @@ class KDETestResult(NamedTuple):
     statistic: float
     z: float
     pvalue: float
+
+
+class KDEPermutationResult(NamedTuple):
+    """Result of :func:`kde_permutation_test`."""
+
+    statistic: float
+    pvalue: float
+
+
+class KDEMultiscaleResult(NamedTuple):
+    """Maximum standardized kernel distance and its joint permutation p-value."""
+
+    statistic: float
+    pvalue: float
+
+
+def kde_permutation_test(X1, X2, *, bandwidth=None, n_resamples=999, random_state=None):
+    """Compare two independent samples by permuting labels of a pooled Gaussian KDE.
+
+    The statistic is the integrated squared difference of two KDEs with a
+    common bandwidth matrix H. Products of Gaussian kernels integrate to a
+    Gaussian kernel with bandwidth 2H, so the statistic is also a squared
+    maximum mean discrepancy (Gretton et al. 2012).
+
+    Parameters
+    ----------
+    X1, X2 : array-like
+        Samples of shape (n_samples, n_features), or 1-D for one variable.
+    bandwidth : float or array-like, optional
+        A standard deviation or positive definite matrix, as for
+        :class:`KernelDensity`. The default is the normal reference bandwidth
+        of the pooled sample, which requires nonsingular pooled covariance.
+    n_resamples : int or np.inf, default 999
+        Permutation budget. Enumerate all assignments if the budget permits.
+    random_state : int or numpy.random.Generator, optional
+        Seed or generator for the random label assignments.
+
+    Returns
+    -------
+    KDEPermutationResult
+        Integrated squared difference and upper-tail permutation p-value.
+
+    Notes
+    -----
+    The common bandwidth is held fixed across assignments. Choose it without
+    using the labels to preserve the finite-sample permutation calibration
+    under exchangeability. Randomized p-values include the observed assignment
+    in the numerator and denominator. The method stores an N by N kernel matrix
+    and takes quadratic time in the pooled size N per assignment.
+
+    References
+    ----------
+    Gretton, A., Borgwardt, K. M., Rasch, M. J., Schölkopf, B. and Smola,
+    A. (2012). A kernel two-sample test. *Journal of Machine Learning
+    Research*, 13(25), 723-773.
+    """
+    Z, L, n1 = _kde_permutation_setup(X1, X2, bandwidth, n_resamples)
+    K = spatial.distance.cdist(Z, Z, "sqeuclidean")
+    _gaussian_gram(K, 1)
+    result = _permute_kernel(K, n1, n_resamples, as_generator(random_state))
+    log_normalizer = Z.shape[1] / 2 * np.log(4 * np.pi) + np.linalg.slogdet(L)[1]
+    value = float(result.statistic)
+    if value:
+        value = float(np.exp(np.log(value) - log_normalizer))
+    return KDEPermutationResult(value, float(result.pvalue))
+
+
+def kde_multiscale_test(
+    X1,
+    X2,
+    *,
+    bandwidth=None,
+    scales=(0.25, 0.5, 1.0, 2.0, 4.0),
+    n_resamples=999,
+    random_state=None,
+):
+    """Compare two independent samples at several Gaussian kernel bandwidths.
+
+    For each scale ``s`` of the pooled bandwidth matrix ``H``, compute the
+    squared discrepancy of the two KDEs with bandwidth ``s**2 * H``.
+    Standardize the discrepancies within each scale, then take their maximum.
+    The same label assignments are used at every scale so one permutation
+    calibration accounts for the search across scales.
+
+    Parameters
+    ----------
+    X1, X2 : array-like
+        Samples of shape (n_samples, n_features), or 1-D for one variable.
+    bandwidth : float or array-like, optional
+        Common base standard deviation or positive definite bandwidth matrix,
+        as in :func:`kde_permutation_test`. The default is the normal reference
+        bandwidth of the pooled sample, which requires nonsingular covariance.
+    scales : array-like, default (0.25, 0.5, 1, 2, 4)
+        Nonempty sequence of finite positive multipliers of the base standard
+        deviation. Choose the bandwidth and scales without using the labels.
+    n_resamples : int or np.inf, default 999
+        Permutation budget. Enumerate all assignments if the budget permits.
+    random_state : int, numpy.random.Generator or None, optional
+        Seed or generator for the shared label assignments.
+
+    Returns
+    -------
+    KDEMultiscaleResult
+        Maximum standardized discrepancy and its upper-tail permutation
+        p-value. If every scale has numerically constant scores, return (0, 1).
+
+    Notes
+    -----
+    The center and standard deviation of each scale are computed over all
+    enumerated assignments, or over the random assignments plus the observed
+    assignment. Constant scales are omitted. This symmetric treatment keeps
+    the row statistics exchangeable when the labels are exchangeable. The
+    calibration includes ties in the upper tail.
+
+    The implementation keeps one Gram matrix at a time. With ``N`` pooled
+    observations, ``S`` scales and ``B`` assignments, the time for evaluating
+    the discrepancies is ``O(S B N**2)``. The distance matrix, Gram matrix,
+    and permutation scores use ``O(N**2 + S B)`` storage.
+
+    References
+    ----------
+    Schrab, A., Kim, I., Albert, M., Laurent, B., Guedj, B. and Gretton, A.
+    (2023). MMD aggregated two-sample test. *Journal of Machine Learning
+    Research*, 24(194), 1-81. Aggregates kernels with a different statistic.
+
+    Hemerik, J. and Goeman, J. (2018). Exact testing with random permutations.
+    *TEST*, 27, 811-825.
+    """
+    scales = np.asarray(scales, dtype=float)
+    if scales.ndim != 1 or scales.size == 0 or not np.all((scales > 0) & np.isfinite(scales)):
+        raise ValueError("scales must be a nonempty sequence of finite positive numbers")
+    Z, _, n1 = _kde_permutation_setup(X1, X2, bandwidth, n_resamples)
+    distances = spatial.distance.cdist(Z, Z, "sqeuclidean")
+    K = np.empty_like(distances)
+    exact = n_resamples >= math.comb(len(Z), n1)
+    rng = as_generator(random_state)
+    initial_rng = deepcopy(rng)
+    observed, columns = [], []
+    for scale in scales:
+        np.copyto(K, distances)
+        _gaussian_gram(K, scale)
+        result = _permute_kernel(K, n1, n_resamples, rng)
+        observed.append(result.statistic)
+        columns.append(result.null_distribution)
+        # Replay the assignments at the next scale. The caller's generator
+        # advances once, as in the single-bandwidth test.
+        rng = deepcopy(initial_rng)
+
+    null = np.column_stack(columns)
+    scores = null if exact else np.vstack([observed, null])
+    active = np.ptp(scores, axis=0) > _MMD_TOL
+    if not active.any():
+        return KDEMultiscaleResult(0.0, 1.0)
+    scores = scores[:, active]
+    center = scores.mean(axis=0)
+    spread = scores.std(axis=0)
+    statistic = float(np.max((np.asarray(observed)[active] - center) / spread))
+    maximum = np.max((scores - center) / spread, axis=1)
+    tolerance = 100 * np.finfo(float).eps * max(1.0, abs(statistic))
+    return KDEMultiscaleResult(statistic, float(np.mean(maximum >= statistic - tolerance)))
+
+
+def _kde_permutation_setup(X1, X2, bandwidth, n_resamples):
+    X1, X2 = _check_two_samples(X1, X2)
+    if n_resamples != np.inf:
+        check_count("n_resamples", n_resamples)
+    X = np.vstack([X1, X2])
+    n, d = X.shape
+    if bandwidth is None:
+        Z, root = _sphere(X)
+        h = np.sqrt(_normal_scale(n, d, 0)[0, 0])
+        Z, L = Z / h, root * h
+    else:
+        L = np.linalg.cholesky(_fixed_bandwidth(bandwidth, d))
+        Z = linalg.solve_triangular(L, (X - X[0]).T, lower=True).T
+    return Z, L, len(X1)
+
+
+def _gaussian_gram(distances, scale):
+    """Replace squared whitened distances by the Gaussian Gram matrix."""
+    with np.errstate(over="ignore", under="ignore"):
+        distances /= scale
+        distances /= scale
+        distances *= -0.25
+        np.exp(distances, out=distances)
+
+
+def _permute_kernel(K, n1, n_resamples, rng):
+    """Evaluate the kernel discrepancy on batches of label assignments."""
+    n = len(K)
+
+    def statistic(i, j, axis):
+        weights = np.full((*i.shape[:-1], n), -1 / j.shape[-1])
+        np.put_along_axis(weights, i, 1 / n1, axis=-1)
+        values = np.einsum("...i,...i->...", weights @ K, weights)
+        return np.where(values > _MMD_TOL, values, 0.0)
+
+    indices = np.arange(n)
+    return stats.permutation_test(
+        (indices[:n1], indices[n1:]),
+        statistic,
+        vectorized=True,
+        n_resamples=n_resamples,
+        batch=128,
+        alternative="greater",
+        random_state=rng,
+    )
 
 
 def kde_test(X1, X2):
@@ -302,6 +544,12 @@ def kde_test(X1, X2):
 
     Notes
     -----
+    With different bandwidths, the statistic estimates a population squared
+    distance and can be negative. It is not the exact integral between two
+    fitted KDEs. If the estimated variance is numerically zero, the function
+    raises ``ValueError``. See :func:`kde_permutation_test` for an alternative
+    that uses a common bandwidth and permutation calibration.
+
     R's ``ks::kde.test`` minimizes the same mean squared error over all
     matrices ``H``, whose minimizers form a continuum; it returns the one its
     optimizer reaches. The bandwidth proportional to ``S`` is the unique
@@ -325,9 +573,7 @@ def kde_test(X1, X2):
     >>> round(result.z, 2), round(result.pvalue, 4)
     (2.21, 0.0134)
     """
-    X1, X2 = _check_sample(X1), _check_sample(X2)
-    if X1.shape[1] != X2.shape[1]:
-        raise ValueError(f"the samples have {X1.shape[1]} and {X2.shape[1]} variables")
+    X1, X2 = _check_two_samples(X1, X2)
     (n1, d), n2 = X1.shape, len(X2)
     H1, H2 = _functional_bandwidth(X1), _functional_bandwidth(X2)
     statistic = (
@@ -341,6 +587,9 @@ def kde_test(X1, X2):
     )
     v1, v2 = _gradient_variance(X1), _gradient_variance(X2)
     variance = 3 * (n1 * v1 + n2 * v2) / (n1 + n2) * (1 / n1 + 1 / n2)
+    # The asymptotic variance is zero at a stationary point of both densities.
+    if not np.isfinite(variance) or np.sqrt(variance) <= np.sqrt(np.finfo(float).eps) * mean:
+        raise ValueError("degenerate normal calibration; use kde_permutation_test")
     z = (statistic - mean) / np.sqrt(variance)
     return KDETestResult(float(statistic), float(z), float(stats.norm.sf(z)))
 
@@ -350,12 +599,21 @@ def _check_sample(X):
     return check_array(X[:, None] if X.ndim == 1 else X, ensure_min_samples=2)
 
 
+def _check_two_samples(X1, X2):
+    X1, X2 = _check_sample(X1), _check_sample(X2)
+    if X1.shape[1] != X2.shape[1]:
+        raise ValueError(f"the samples have {X1.shape[1]} and {X2.shape[1]} variables")
+    return X1, X2
+
+
 def _sphere(X):
     """``X S^-1/2`` and ``S^1/2``, with ``S`` the sample covariance and symmetric roots."""
     values, vectors = np.linalg.eigh(np.atleast_2d(np.cov(X, rowvar=False)))
     if values[0] <= 1e-12 * max(values[-1], 0):
         raise ValueError("the sample covariance of X is singular")
-    return X @ (vectors / np.sqrt(values)) @ vectors.T, (vectors * np.sqrt(values)) @ vectors.T
+    return (X - X.mean(axis=0)) @ (vectors / np.sqrt(values)) @ vectors.T, (
+        vectors * np.sqrt(values)
+    ) @ vectors.T
 
 
 def _normal_scale(n, d, r):

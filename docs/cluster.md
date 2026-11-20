@@ -104,7 +104,12 @@ reproduces its own assignment and trimming of the training data, and trimmed
 k-means assigns each retained observation to its nearest center and trims the
 farthest ones. On frozen data, R's tclust 2.2 finds the same partition, means,
 weights and objective (to 1e-10), and tkmeans the same partition and centers.
-The starts, concentration steps and constants follow tclust's code.
+The starts and concentration steps follow tclust's code. The fit works
+in centered, rescaled coordinates and returns estimates and likelihoods
+in the original units. `converged_` indicates that consecutive assignments
+were identical. At the iteration limit the returned weights are the ones
+used to compute the final assignments and likelihood. If the updated
+covariances all collapse, the search keeps its last scored set of parameters.
 
 Sources are García-Escudero, Gordaliza, Matrán and Mayo-Iscar (2008), Fritz,
 García-Escudero and Mayo-Iscar (2012, 2013) and Cuesta-Albertos, Gordaliza and

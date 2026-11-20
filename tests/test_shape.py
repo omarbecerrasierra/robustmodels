@@ -69,6 +69,17 @@ def test_log_concave_exact_cases():
     np.testing.assert_allclose(fit.score_samples(grid), -(grid**2) / 2 - 0.919, atol=0.12)
 
 
+@pytest.mark.parametrize("scale", [1e-310, 1e308])
+def test_log_concave_extreme_units(scale):
+    # Two distinct equally weighted observations give a uniform density.
+    fit = LogConcaveDensity().fit([-scale, scale])
+    assert fit.score_samples(0)[0] == pytest.approx(-np.log(scale) - np.log(2))
+    np.testing.assert_allclose(
+        fit.cdf([-np.inf, -scale / 2, 0, scale / 2, np.inf]), [0, 0.25, 0.5, 0.75, 1]
+    )
+    assert np.isnan(fit.score_samples(np.nan)[0])
+
+
 def test_integrals_of_linear_exponentials_match_quadrature():
     for a, b in [(0.3, 0.3), (0.3, 0.3005), (0.3, 0.315), (-1.0, 2.0), (2.0, -4.0)]:
         for function, weight in [
@@ -95,6 +106,8 @@ def test_log_concave_input_checks():
         LogConcaveDensity().fit([2.0, 2.0, 2.0])
     with pytest.raises(ValueError, match="NaN"):
         LogConcaveDensity().fit([1.0, np.nan])
+    with pytest.raises(ValueError, match="too many scales"):
+        LogConcaveDensity().fit([0, 1e-300, 1e300])
 
 
 @parametrize_with_checks([ScoreMatchingRegressor(), ScoreMatchingRegressor(symmetric=False)])
@@ -180,3 +193,34 @@ def test_score_matching_input_checks():
         ScoreMatchingRegressor().fit(X[:3], y[:3])
     with pytest.raises(ValueError, match="singular"):
         ScoreMatchingRegressor().fit(np.c_[X[:, 0], 2 * X[:, 0]], y)
+
+
+@pytest.mark.parametrize("n", [3, 4])
+def test_score_matching_accepts_the_smallest_full_rank_samples(n):
+    X = np.arange(n, dtype=float)[:, None]
+    y = X[:, 0] ** 2
+    fit = ScoreMatchingRegressor().fit(X, y)
+    residuals = y - fit.predict(X)
+    np.testing.assert_allclose(np.c_[np.ones(n), X].T @ fit.psi(residuals), 0, atol=1e-7)
+
+
+@pytest.mark.parametrize("symmetric, scale", [(True, 1e-20), (False, 1e20)])
+def test_exact_score_matching_fit_has_no_inference(symmetric, scale):
+    X = np.arange(8, dtype=float)[:, None]
+    y = 1 + 2 * X[:, 0]
+    fit = ScoreMatchingRegressor(symmetric=symmetric).fit(X, scale * y)
+    np.testing.assert_allclose(fit.predict(X) / scale, y, atol=1e-12)
+    assert fit.information_ == 0
+    assert np.isnan(fit.psi([0, 1])).all()
+    assert np.isnan(fit.cov_params_).all()
+    assert np.isnan(fit.p_values_).all()
+
+
+def test_score_matching_with_zero_interquartile_range_in_pilot():
+    X = np.arange(20, dtype=float)[:, None]
+    y = np.r_[np.zeros(19), 1]
+    fit = ScoreMatchingRegressor().fit(X, y)
+    residuals = y - fit.predict(X)
+    score = fit.psi(residuals)
+    assert np.isfinite(score).all()
+    np.testing.assert_allclose(np.c_[np.ones(len(X)), X].T @ score, 0, atol=1e-7)

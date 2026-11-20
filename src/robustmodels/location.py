@@ -7,8 +7,9 @@ float; an empty sample gives ``nan``.
 import warnings
 
 import numpy as np
+from scipy.stats import trim_mean
 
-from ._validation import as_1d, check_count, check_option, check_range
+from ._validation import as_1d, check_count, check_option, check_range, unit_exponent
 from .scale import (
     _bisquare_weights,
     _matrix_median,
@@ -86,11 +87,13 @@ def trimmed_mean(x, proportion=0.1):
     >>> trimmed_mean([1, 2, 2, 3, 4, 100], proportion=0.2)
     2.75
     """
-    x = np.sort(as_1d(x))
-    count = _trim_count(x.size, proportion)
+    x = _trim_input(x, proportion)
     if x.size == 0:
         return np.nan
-    return float(x[count : x.size - count].mean())
+    exponent = unit_exponent(x)
+    scaled = np.ldexp(x, -exponent)
+    estimate = trim_mean(scaled, proportion)
+    return float(np.ldexp(estimate, exponent))
 
 
 def winsorized_mean(x, proportion=0.1):
@@ -124,17 +127,25 @@ def winsorized_mean(x, proportion=0.1):
     >>> round(winsorized_mean([1, 2, 2, 3, 4, 100], proportion=0.2), 4)
     2.8333
     """
-    x = np.sort(as_1d(x))
-    count = _trim_count(x.size, proportion)
+    x = _trim_input(x, proportion)
     if x.size == 0:
         return np.nan
-    clipped = np.clip(x, x[count], x[-1 - count])
-    return float(clipped.mean())
+    lo = int(proportion * x.size)
+    hi = x.size - 1 - lo
+    edges = np.partition(x, (lo, hi))
+    clipped = np.clip(x, edges[lo], edges[hi])
+    return _mean(clipped)
 
 
-def _trim_count(n, proportion):
+def _mean(x):
+    exponent = unit_exponent(x)
+    scaled = np.ldexp(x, -exponent)
+    return float(np.ldexp(scaled.mean(), exponent))
+
+
+def _trim_input(x, proportion):
     check_range("proportion", proportion, 0, 0.5, high_open=True)
-    return int(proportion * n)
+    return as_1d(x)
 
 
 def tau_location(x, *, c1=4.5):
@@ -173,8 +184,9 @@ def tau_location(x, *, c1=4.5):
     check_range("c1", c1, 0, np.inf, low_open=True)
     if x.size == 0:
         return np.nan
-    location, _ = _tau_estimates(x, c1)
-    return location
+    exponent = unit_exponent(x)
+    location, _ = _tau_estimates(np.ldexp(x, -exponent), c1)
+    return float(np.ldexp(location, exponent))
 
 
 PSI_C = {"huber": 1.345, "bisquare": 4.685}
@@ -232,17 +244,19 @@ def m_location(x, *, psi="huber", c=None, scale=None, tol=1e-9, max_iter=500):
     _check_parameters(c, scale, tol, max_iter)
     if x.size == 0:
         return np.nan
+    exponent = unit_exponent(x, 0.0 if scale is None else scale)
+    x = np.ldexp(x, -exponent)
     location = float(np.median(x))
-    scale = mad(x, center=location) if scale is None else scale
+    scale = mad(x, center=location) if scale is None else np.ldexp(scale, -exponent)
     if scale == 0:
-        return location
+        return float(np.ldexp(location, exponent))
     for _ in range(max_iter):
         updated = _location_step(x, location, scale, psi, c)
         if abs(updated - location) < tol * scale:
-            return float(updated)
+            return float(np.ldexp(updated, exponent))
         location = updated
     warnings.warn("m_location did not converge within max_iter", RuntimeWarning, stacklevel=2)
-    return float(location)
+    return float(np.ldexp(location, exponent))
 
 
 def _check_parameters(c, scale, tol, max_iter):
@@ -257,7 +271,8 @@ def _location_step(x, location, scale, psi, c):
     if psi == "huber":
         clipped = np.clip(x, location - c * scale, location + c * scale)
         return float(clipped.mean())
-    weights = _bisquare_weights((x - location) / scale, c)
+    with np.errstate(over="ignore"):
+        weights = _bisquare_weights((x - location) / scale, c)
     total = weights.sum()
     if total == 0:
         return location

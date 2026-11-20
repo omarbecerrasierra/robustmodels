@@ -150,6 +150,11 @@ The estimators work with `clone`, `get_params`, `set_params` and pipelines:
 
 ## Numerical limits and sources
 
+Rank checks use the correlation scale. Changing measurement units therefore
+preserves whether a covariance qualifies as numerically nonsingular and
+preserves Mahalanobis distances for full-rank fits. The threshold still
+applies to near collinearity.
+
 MCD is solved by an exhaustive sorted-window search in one dimension.
 Multivariate MCD, MRCD, MVE, S and MM use finite searches or iterative
 refinements: they do not certify a global optimum. The MVE implementation

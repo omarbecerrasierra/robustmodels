@@ -21,7 +21,14 @@ from sklearn.utils.validation import check_is_fitted, validate_data
 
 from ._validation import as_generator, check_count, check_option, check_range
 from .covariance import MCD
-from .regression import _bisquare, _coefficient_table, _design, _elemental_subset, _split
+from .regression import (
+    _bisquare,
+    _coefficient_table,
+    _design,
+    _elemental_subset,
+    _huber_weights,
+    _split,
+)
 from .scale import _bisquare_weights, _rho
 
 __all__ = [
@@ -103,8 +110,8 @@ class _LogisticMixin(ClassifierMixin):
 
     def predict_proba(self, X):
         """Probabilities of ``classes_[0]`` and ``classes_[1]``, one row per observation."""
-        probability = expit(self._linear_predictor(X))
-        return np.column_stack([1 - probability, probability])
+        eta = self._linear_predictor(X)
+        return np.column_stack([expit(-eta), expit(eta)])
 
     def predict(self, X):
         """Most probable class."""
@@ -149,14 +156,23 @@ class _MallowsGLM(_RobustGLM):
 
     def fit(self, X, y):
         """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
+        return self._fit(X, y, None)
+
+    def _fit(self, X, y, offset):
         check_range("c", self.c, 0, np.inf, low_open=True, high_open=True)
         check_count("max_iter", self.max_iter)
         check_range("tol", self.tol, 0, np.inf, low_open=True, high_open=True)
         X, design, y = self._validated_design(X, y)
         y = self._response(y)
         w = _x_weights(self.x_weights, X, design)
-        fit = _mallows(design, y, self._family, self.c, w, self.max_iter, self.tol)
+        offset = _offset(offset, len(y))
+        fit = _mallows(design, y, self._family, self.c, w, self.max_iter, self.tol, offset)
         coef, cov, residual_weights, self.n_iter_, converged = fit
+        # Only the upper Poisson cap changes the score materially. Below -_MAX_ETA,
+        # and at either logistic cap, an observation's score is O(sqrt(V(mu))) ~ 3e-7.
+        if self._family == "poisson" and np.max(design @ coef + offset) >= _MAX_ETA:
+            converged = False
+            cov = np.full_like(cov, np.nan)
         self.converged_ = converged
         if not converged:
             warnings.warn("Mallows estimator did not converge", RuntimeWarning, 2)
@@ -257,6 +273,19 @@ class MallowsPoissonRegressor(_PoissonMixin, _MallowsGLM):
     (1.07, [0.54])""",
     )
     _family = "poisson"
+
+    def fit(self, X, y, *, offset=None):
+        """Fit the count model with an optional known additive log-mean offset.
+
+        Pass a finite scalar or one value per row. For exposure times ``t``,
+        use ``offset=np.log(t)`` with strictly positive exposures.
+        """
+        return self._fit(X, y, offset)
+
+    def predict(self, X, *, offset=None):
+        """Return expected counts with the supplied offset, or unit exposure by default."""
+        eta = self._linear_predictor(X)
+        return _poisson_mean(eta + _offset(offset, len(eta)))
 
     def _response(self, y):
         return self._counts(y)
@@ -502,6 +531,13 @@ def _poisson_mean(eta):
     return np.exp(np.clip(eta, -_MAX_ETA, _MAX_ETA))
 
 
+def _offset(offset, n):
+    values = np.asarray(0.0 if offset is None else offset, dtype=float)
+    if values.shape not in ((), (n,)) or not np.isfinite(values).all():
+        raise ValueError("offset must be finite and scalar or have one value per observation")
+    return values
+
+
 def _mean(eta, family):
     return expit(np.clip(eta, -_MAX_ETA, _MAX_ETA)) if family == "binomial" else _poisson_mean(eta)
 
@@ -515,12 +551,12 @@ def _solve(design, weights, score):
     return np.linalg.lstsq(design.T @ (design * weights[:, None]), design.T @ score, rcond=None)[0]
 
 
-def _maximum_likelihood(design, y, family, max_iter=50, tol=1e-10):
+def _maximum_likelihood(design, y, family, max_iter=50, tol=1e-10, offset=0):
     """Maximum likelihood fit of a logistic or Poisson model by Fisher scoring."""
     start = np.log(y + 0.5) if family == "poisson" else np.log((y + 0.5) / (1.5 - y))
-    coef = np.linalg.lstsq(design, start, rcond=None)[0]
+    coef = np.linalg.lstsq(design, start - offset, rcond=None)[0]
     for _ in range(max_iter):
-        mu = _mean(design @ coef, family)
+        mu = _mean(design @ coef + offset, family)
         step = _solve(design, np.maximum(_variance(mu, family), 1e-12), y - mu)
         # Bound changes of the linear predictor to avoid numerical separation/overflow.
         step *= min(1.0, 5.0 / max(np.max(np.abs(design @ step)), 1e-300))
@@ -546,16 +582,16 @@ def _mallows_moments(mu, c, family):
     return mean, c * (d_low + d_high) + middle / root, c**2 * (p_low + 1 - p_high) + middle
 
 
-def _mallows(design, y, family, c, w, max_iter, tol):
+def _mallows(design, y, family, c, w, max_iter, tol, offset=0):
     """Fisher scoring for the Mallows quasi-likelihood estimating equation.
 
     Returns (coef, covariance, residual weights, iterations, converged).
     """
     n = len(y)
-    coef = _maximum_likelihood(design, y, family)
+    coef = _maximum_likelihood(design, y, family, offset=offset)
     converged = False
     for iteration in range(1, max_iter + 1):  # noqa: B007 (used after the loop)
-        mu = _mean(design @ coef, family)
+        mu = _mean(design @ coef + offset, family)
         root = np.sqrt(np.maximum(_variance(mu, family), 1e-12))
         mean, slope, _ = _mallows_moments(mu, c, family)
         score = (np.clip((y - mu) / root, -c, c) - mean) * w * root
@@ -566,13 +602,12 @@ def _mallows(design, y, family, c, w, max_iter, tol):
         converged = np.linalg.norm(step) <= tol * max(tol, np.linalg.norm(coef))
         if converged:
             break
-    mu = _mean(design @ coef, family)
+    mu = _mean(design @ coef + offset, family)
     root = np.sqrt(np.maximum(_variance(mu, family), 1e-12))
     mean, slope, square = _mallows_moments(mu, c, family)
     bread = np.linalg.pinv(design.T @ (design * (slope * w * root**3)[:, None]) / n)
     meat = design.T @ (design * ((square - mean**2) * (w * root) ** 2)[:, None]) / n
-    residuals = np.abs(y - mu) / root
-    weights = np.minimum(1, c / np.maximum(residuals, 1e-300))
+    weights = _huber_weights((y - mu) / root, c)
     return coef, bread @ meat @ bread / n, weights, iteration, converged
 
 

@@ -9,7 +9,7 @@ import numpy as np
 from scipy import optimize, special
 from scipy.stats import chi2, norm
 
-from ._validation import as_1d, check_range
+from ._validation import as_1d, check_range, unit_exponent
 
 __all__ = ["lmc", "m_scale", "mad", "medcouple", "pn", "qn", "rmc", "sn", "tau_scale"]
 
@@ -42,7 +42,8 @@ def mad(x, *, center=None, consistency=True, finite_correction=False):
     Returns
     -------
     float
-        ``nan`` for an empty sample, 0 for a single observation.
+        ``nan`` for an empty sample, 0 for a single observation, ``inf`` if
+        the scaled MAD overflows float64.
 
     References
     ----------
@@ -65,14 +66,38 @@ def mad(x, *, center=None, consistency=True, finite_correction=False):
         check_range("center", center, -np.inf, np.inf)
     if x.size < 2:
         return _trivial_scale(x)
-    if center is None:
-        center = np.median(x)
-    value = np.median(np.abs(x - center))
-    if consistency:
-        value *= MAD_CONSTANT
-    if finite_correction:
-        value *= _mad_factor(x.size)
+    _, value = _median_and_mad(
+        x, center, consistency=consistency, finite_correction=finite_correction
+    )
     return float(value)
+
+
+def _median_and_mad(x, center=None, *, consistency=True, finite_correction=False):
+    """Center and MAD of a nonempty, finite sample, along axis 0."""
+    exponent = unit_exponent(x, 0.0 if center is None else center, axis=0)
+    scaled = np.ldexp(x, -exponent)
+    center = _median_axis0(scaled) if center is None else np.ldexp(center, -exponent)
+    location = np.ldexp(center, exponent)
+    with np.errstate(over="ignore"):
+        value = _median_axis0(np.abs(scaled - center))
+        overflow = np.isinf(value)
+        if np.any(overflow):
+            # Halve before subtracting when an overflowing deviation reaches the median.
+            half = _median_axis0(np.abs(scaled / 2 - center / 2))
+            value = np.where(overflow, half, value)
+            exponent = exponent + overflow
+        if consistency:
+            value *= MAD_CONSTANT
+        if finite_correction:
+            value *= _mad_factor(len(x))
+        return location, np.ldexp(value, exponent)
+
+
+def _median_axis0(x):
+    """Median along axis 0, with an overflow-safe midpoint for even samples."""
+    lower, upper = (len(x) - 1) // 2, len(x) // 2
+    middle = np.partition(x, (lower, upper), axis=0)
+    return _safe_average(middle[lower], middle[upper])
 
 
 def _mad_factor(n):
@@ -407,15 +432,17 @@ def tau_scale(x, *, c1=4.5, c2=3.0, consistency=True):
     check_range("c2", c2, 0, np.inf, low_open=True)
     if x.size < 2:
         return _trivial_scale(x)
+    exponent = unit_exponent(x)
+    x = np.ldexp(x, -exponent)
     location, s0 = _tau_estimates(x, c1)
     if s0 == 0:
         return 0.0
-    residuals = (x - location) / s0
-    clipped_squares = np.minimum(residuals**2, c2**2)
-    mean_square = clipped_squares.mean()
+    with np.errstate(over="ignore"):
+        clipped = np.minimum(np.abs(x - location) / s0, c2)
+    mean_square = np.mean(clipped**2)
     if consistency:
         mean_square /= _e_trunc_square(c2 * norm.ppf(0.75))
-    return float(s0 * np.sqrt(mean_square))
+    return float(np.ldexp(s0 * np.sqrt(mean_square), exponent))
 
 
 def _tau_estimates(x, c):
@@ -424,8 +451,8 @@ def _tau_estimates(x, c):
     raw_mad = np.median(np.abs(x - center))
     if raw_mad == 0:
         return float(center), 0.0
-    residuals = (x - center) / raw_mad
-    weights = _bisquare_weights(residuals, c)
+    with np.errstate(over="ignore"):
+        weights = _bisquare_weights((x - center) / raw_mad, c)
     total = weights.sum()
     if total == 0:
         return float(center), float(raw_mad)
@@ -479,10 +506,13 @@ def m_scale(x, *, center=None, breakdown=0.5):
         check_range("center", center, -np.inf, np.inf)
     if x.size < 2:
         return _trivial_scale(x)
-    center = np.median(x) if center is None else center
+    exponent = unit_exponent(x, 0.0 if center is None else center)
+    x = np.ldexp(x, -exponent)
+    center = np.median(x) if center is None else np.ldexp(center, -exponent)
     residuals = x - center
     tuning = _tuning_for_breakdown(breakdown)
-    return _mscale_bisquare(residuals, tuning, breakdown)
+    with np.errstate(over="ignore"):
+        return float(np.ldexp(_mscale_bisquare(residuals, tuning, breakdown), exponent))
 
 
 def _mscale_bisquare(residuals, c, breakdown, s0=None, tol=1e-10, max_iter=200):
@@ -521,15 +551,18 @@ def _mscale_bisquare(residuals, c, breakdown, s0=None, tol=1e-10, max_iter=200):
 
 def _rho(t, c):
     """Tukey's bisquare loss, normalized to rho(infinity) = 1."""
-    squared = (t / c) ** 2
-    clipped = np.minimum(squared, 1)
+    clipped = _bisquare_argument(t, c)
     return clipped * (3 + clipped * (clipped - 3))
 
 
 def _bisquare_weights(t, c):
     """``psi(t) / t`` up to a constant."""
-    u = (t / c) ** 2
-    return np.where(u < 1, (1 - u) ** 2, 0.0)
+    return (1 - _bisquare_argument(t, c)) ** 2
+
+
+def _bisquare_argument(t, c):
+    """Squared scaled residual, clipped to the support of Tukey's bisquare."""
+    return np.minimum(np.abs(t) / c, 1) ** 2
 
 
 def _expected_rho(c, p=1):
