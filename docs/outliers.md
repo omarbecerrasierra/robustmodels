@@ -82,6 +82,9 @@ directions, normal to hyperplanes through `p` observations (250 times the
 number of variables by default, as R's mrfDepth); it can only underestimate
 the supremum over all directions. In the tests, on two-dimensional data, it
 reaches at least 95% of the supremum found by searching 100,000 directions.
+Stahel–Donoho and the log-scale cutoff share the calculation used by
+[`mad`](scale.md). Both use the normal consistency constant, with the
+finite-sample correction disabled.
 
 Observations are flagged when their outlyingness exceeds
 `exp(median(L) + mad(L) z) - 0.1`, with `L = log(0.1 + outlyingness)` and
@@ -126,7 +129,10 @@ and run scikit-learn's estimator checks. Equations (2)–(3) of
 the scales. Their 25% implosion/explosion breakdown results for the side
 scales assume a continuous symmetric unimodal model with density strictly
 decreasing away from its center. They are not a 50% breakdown guarantee for
-these scales. Zero side scales yield infinite outlyingness for nonzero deviations.
+these scales. Zero side scales yield infinite outlyingness for nonzero
+deviations. The log cutoff uses only finite training scores, and observations
+with infinite scores are flagged even when those scores make up most of the
+sample.
 
 ## Reference
 

@@ -54,7 +54,8 @@ certify this implementation. The method pages explain numerical conventions and 
 | `outliers.DirectionalOutlyingness` | [RRH18](#rrh18) | Side-specific scales; includes the odd median and uses unrounded Gaussian calibration |
 | `depth.halfspace_depth` | [T75](#t75), [RR96](#rr96), [DM16](#dm16) | Exact in one and two dimensions; above two, sampled-hyperplane upper approximation or, with `exact=True`, the recursive exact algorithm |
 | `covariance.PenaPrieto` | [PP01](#pp01), [PP07](#pp07), [M17](#m17), [MMYS19](#mmys19) | KSD steps and constants of RobStatTM's `initPP`; covariance scaled by the 0.99 chi-square consistency factor, which RobStatTM omits |
-| `rank.RankRegressor`, `rank.drop_test` | [J72](#j72), [MH76](#mh76), [KSM87](#ksm87), [HM11](#hm11), [KM12](#km12) | Wilcoxon scores standardized as Rfit; exact linear-programming fit; exact 0.8 quantile for `tau`; Rfit's small-sample corrections; `rfit`, `drop.test` |
+| `rank.RankRegressor`, `rank.drop_test` | [J72](#j72), [MH76](#mh76), [KSM87](#ksm87), [HM11](#hm11), [KM12](#km12), [PK97](#pk97) | Wilcoxon scores standardized as Rfit; exact linear-programming fit on the near pairs, certified; exact 0.8 quantile for `tau`; Rfit's small-sample corrections; `rfit`, `drop.test` |
+| `datasets` | [RL87](#rl87), [HBK84](#hbk84), [R84](#r84), [DS66](#ds66), [B65](#b65), [HHB74](#hhb74) | Values of R's robustbase 0.99-7 (`starsCYG`, `hbk`, `wood`), base R (`stackloss`) and rrcov 1.7-7 (`hemophilia`) |
 | `rank.rank_anova` | [HM11](#hm11), [KM12](#km12) | Drop test of the one-way model with group indicators; `oneway.rfit` |
 | `regression.mm_test` | [R82](#r82), [HRRS86](#hrrs86) | Reduced M-fit with the full scale, `anova.lmrob` (`test = "Deviance"` or `"Wald"`) |
 | `cluster.TClust` | [GGMM08](#ggmm08), [FGM12](#fgm12), [FGM13](#fgm13), [CGM97](#cgm97) | Hard assignment, eigenvalue restriction by optimal truncation, tclust's starts and concentration steps |
@@ -62,6 +63,8 @@ certify this implementation. The method pages explain numerical conventions and 
 | `density.KernelDensity` | [WJ93](#wj93), [CDW11](#cdw11), [H96](#h96) | Normal kernel with a full bandwidth matrix; derivatives in closed form; highest density levels by quantiles of the estimate at the observations, as `ks::contourLevels` |
 | `density.plugin_bandwidth`, `density.scv_bandwidth` | [CD10](#cd10), [DH05](#dh05), [CD11](#cd11), [CD13](#cd13), [CD15](#cd15), [H96b](#h96b), [MP92](#mp92) | `dscalar` pilot on sphered data in two stages; normal derivative functionals from cumulants of quadratic forms, without binning; `Hpi` and `Hscv` with `pilot = "dscalar"` |
 | `density.kde_test` | [DGS12](#dgs12) | Bandwidths `h^2 S` minimizing the AMSE of each `psi_0`; exact density gradient at the sample means; `kde.test` |
+| `density.kde_permutation_test` | [GBRSS12](#gbrss12) | Integrated squared difference of two Gaussian KDEs with a common bandwidth. Calibrated by exchanging labels in the pooled sample. |
+| `density.kde_multiscale_test` | [HG18](#hg18), [SKALGG23](#skalgg23) | Joint permutation calibration of the maximum standardized KDE discrepancy over bandwidths, with symmetric standardization across assignments. |
 | `plots.coefficient_plot` | — | Estimates with normal-quantile intervals from each model's `std_errors_`; least squares with classical standard errors as reference |
 | `plots.dd_plot` | [LPS99](#lps99) | Halfspace depth in each sample of every pooled observation |
 | `plots.ctl_curves` | [GGMM11](#ggmm11) | `objective_` of `TClust` over a grid of `k` and `alpha`, R's `ctlcurves` defaults (`restr_factor = 50`) |
@@ -513,6 +516,41 @@ Statistical Methods*, 2nd edition. CRC Press.
 Kloke, J. D. and McKean, J. W. (2012). *Rfit: Rank-Based Estimation for Linear
 Models*. The R Journal, **4**(2), 57–64.
 
+(rl87)=
+### RL87
+Rousseeuw, P. J. and Leroy, A. M. (1987). *Robust Regression and Outlier
+Detection*. Wiley. [DOI](https://doi.org/10.1002/0471725382).
+Source of the star cluster CYG OB1, stack loss and wood gravity analyses in
+`datasets`.
+
+(hbk84)=
+### HBK84
+Hawkins, D. M., Bradu, D. and Kass, G. V. (1984). *Location of Several
+Outliers in Multiple-Regression Data Using Elemental Sets*. Technometrics,
+**26**(3), 197–208. [DOI](https://doi.org/10.1080/00401706.1984.10487956).
+
+(ds66)=
+### DS66
+Draper, N. R. and Smith, H. (1966). *Applied Regression Analysis*. Wiley.
+Original wood gravity data, before the outliers of R84 were introduced.
+
+(b65)=
+### B65
+Brownlee, K. A. (1965). *Statistical Theory and Methodology in Science and
+Engineering*, 2nd edition. Wiley. Stack loss data.
+
+(hhb74)=
+### HHB74
+Habbema, J. D. F., Hermans, J. and van den Broek, K. (1974). *A Stepwise
+Discriminant Analysis Program Using Density Estimation*. In Bruckmann, G.
+(ed.), COMPSTAT 1974, 101–110. Physica-Verlag. Hemophilia A carrier data.
+
+(pk97)=
+### PK97
+Portnoy, S. and Koenker, R. (1997). *The Gaussian Hare and the Laplacian
+Tortoise: Computability of Squared-Error versus Absolute-Error Estimators*.
+Statistical Science, **12**(4), 279–296.
+
 (sr86)=
 ### SR86
 Streitberg, B. and Röhmel, J. (1986). *Exact Distributions for Permutation and
@@ -640,6 +678,23 @@ Duong, T., Goud, B. and Schauer, K. (2012). *Closed-Form Density-Based
 Framework for Automatic Detection of Cellular Morphology Changes*.
 Proceedings of the National Academy of Sciences, **109**(22), 8382–8387.
 [DOI](https://doi.org/10.1073/pnas.1117796109).
+
+(gbrss12)=
+### GBRSS12
+Gretton, A., Borgwardt, K. M., Rasch, M. J., Schölkopf, B. and Smola, A.
+(2012). *A Kernel Two-Sample Test*. Journal of Machine Learning Research,
+**13**(25), 723–773. [Article](https://www.jmlr.org/papers/v13/gretton12a.html).
+
+(hg18)=
+### HG18
+Hemerik, J. and Goeman, J. (2018). *Exact Testing with Random Permutations*.
+TEST, **27**, 811–825. [DOI](https://doi.org/10.1007/s11749-017-0571-1).
+
+(skalgg23)=
+### SKALGG23
+Schrab, A., Kim, I., Albert, M., Laurent, B., Guedj, B. and Gretton, A.
+(2023). *MMD Aggregated Two-Sample Test*. Journal of Machine Learning Research,
+**24**(194), 1–81. [Article](https://www.jmlr.org/papers/v24/21-1289.html).
 
 (w02)=
 ### W02

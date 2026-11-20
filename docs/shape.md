@@ -80,6 +80,11 @@ and re-estimates the score once. Standard errors come from
 residuals. With `symmetric=True` (default) the errors are assumed symmetric
 and the intercept is estimated with the slopes. With `symmetric=False` the
 slopes need no symmetry, and the intercept is the median of the residuals.
+When the data fit a line exactly to numerical precision, the coefficients
+are available and the score and standard errors are reported as NaN.
+The published efficiency theorem uses sample splitting under its own
+regularity conditions. The implementation follows the practical two-pass
+fit on the whole sample.
 
 ```{eval-rst}
 .. plot::

@@ -31,8 +31,8 @@ observations.
 - **Cluster with outliers present:** TCLUST and trimmed k-means.
 - **Estimate densities:** multivariate kernel density estimation with a full
   bandwidth matrix (plug-in and smoothed cross-validation), density
-  derivatives, highest density regions and a two-sample test; log-concave
-  density estimation without a bandwidth.
+  derivatives and highest density regions. Compare two distributions by
+  permutation and estimate a log-concave density without a bandwidth.
 - **Detect outliers:** Stahel-Donoho, adjusted and directional outlyingness;
   halfspace depth (exact in any dimension) and regression depth, Tukey medians
   and bagplots.
@@ -260,8 +260,8 @@ explain the pre-release checks and differences from R.
 | Fit a linear regression with heavy-tailed errors | `RankRegressor` | No tuning constant; resists response outliers, not leverage points. |
 | Compare two samples or paired data with ties | `rank_sum_test`, `signed_rank_test` | Exact p-values conditional on the observed ties. |
 | Group observations when some are outliers | `TClust` | Trims a fraction `alpha`; restricts how different the cluster shapes may be. |
-| Estimate a multivariate density, its modes or its derivatives | `KernelDensity` | Full bandwidth matrix chosen from the data; `hdr_level` gives highest density regions. |
-| Test whether two samples have the same distribution | `kde_test` | Any dimension; compares kernel density estimates. |
+| Estimate a multivariate density or its derivatives | `KernelDensity` | Full bandwidth matrix chosen from the data. `hdr_level` gives highest density regions. |
+| Test whether two samples have the same distribution | `kde_permutation_test`, `kde_multiscale_test`, `kde_test` | Compare kernel density estimates at one or several smoothing scales. |
 | Estimate a unimodal density without a bandwidth | `LogConcaveDensity` | Maximum likelihood under log-concavity. |
 | Fit a linear regression with the most efficient convex loss | `ScoreMatchingRegressor` | Loss estimated from the residuals; resists response outliers, not leverage points. |
 | Test whether some MM slopes are zero | `mm_test` | Robust deviance or Wald test, as `anova.lmrob`. |
@@ -298,12 +298,13 @@ for sample-size requirements, parameters and worked examples.
 | `robustmodels.multivariate` | `ROBPCA`, `ProjectionPursuitPCA`, `RobustLDA`, `RobustQDA`, `hotelling_t2`, `manova` |
 | `robustmodels.regression` | `MMRegressor`, `SRegressor`, `LTSRegressor`, `NonlinearMRegressor`, `mm_test` |
 | `robustmodels.cluster` | `TClust` |
-| `robustmodels.density` | `KernelDensity`, `plugin_bandwidth`, `scv_bandwidth`, `kde_test` |
+| `robustmodels.density` | `KernelDensity`, `plugin_bandwidth`, `scv_bandwidth`, `kde_permutation_test`, `kde_multiscale_test`, `kde_test` |
 | `robustmodels.shape` | `LogConcaveDensity`, `ScoreMatchingRegressor` |
 | `robustmodels.rank` | `RankRegressor`, `drop_test`, `rank_anova`, `rank_sum_test`, `signed_rank_test` |
 | `robustmodels.glm` | `MallowsLogisticRegression`, `MallowsPoissonRegressor`, `BYLogisticRegression`, `MTPoissonRegressor` |
 | `robustmodels.depth` | `halfspace_depth`, `halfspace_median`, `regression_depth`, `bagplot_stats` |
 | `robustmodels.outliers` | `StahelDonohoOutlyingness`, `AdjustedOutlyingness`, `DirectionalOutlyingness` |
+| `robustmodels.datasets` | `load_stars`, `load_hbk`, `load_wood`, `load_stackloss`, `load_hemophilia` |
 | `robustmodels.plots` | `outlier_map`, `residual_plot`, `residual_qq`, `distance_distance`, `distance_qq`, `tolerance_ellipse`, `adjusted_boxplot`, `outlyingness_plot`, `pca_outlier_map`, `scree_plot`, `biplot`, `discriminant_plot`, `cluster_plot`, `bagplot`, `hdr_plot`, `log_concave_plot`, `score_plot`, `coefficient_plot`, `dd_plot`, `ctl_curves` |
 
 The covariance module also exposes `h_alpha_n`, `mcd_consistency` and
@@ -338,7 +339,9 @@ for the independent theoretical audit and its limits.
 ## Documentation, contributions and citation
 
 - **Learn:** the [user guide](https://omarbecerrasierra.github.io/robustmodels/)
-  includes the API reference and examples tested alongside the package.
+  includes the API reference and examples tested alongside the package, and
+  [worked examples on classic data sets](https://omarbecerrasierra.github.io/robustmodels/examples.html)
+  that recover their documented outliers.
 - **Contribute:** see the [development guide](https://github.com/omarbecerrasierra/robustmodels/blob/main/CONTRIBUTING.md)
   for setup, checks and release instructions. Bug reports and reproducible
   examples are welcome in [Issues](https://github.com/omarbecerrasierra/robustmodels/issues).

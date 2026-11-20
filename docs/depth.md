@@ -11,6 +11,10 @@ the exact depth by the recursive algorithm of Dyckerhoff and Mozharovskyi
 the depths of all 200 points of a sample in three dimensions take about 6
 seconds on a laptop, and those of 60 points in four dimensions about 12.
 
+When the sample lies in a lower-dimensional affine span, the default search
+works in that span. Queries outside it have depth zero. If the span is a line
+or a plane, the corresponding one- or two-dimensional calculation is used.
+
 ```pycon
 >>> import numpy as np
 >>> from robustmodels.depth import halfspace_depth

@@ -37,11 +37,30 @@ Robust R-squared: 0.6687
 Least squares gives `(1.95, 2.3, -1.34)` for the same data. The standard
 errors use the scale `tau` of Koul, Sievers and McKean (1987) for the slopes
 and `tau_s`, from the confidence interval of the median, for the intercept.
+For large samples the `tau` calculation selects its quantile and counts
+distances in sorted rows with linear auxiliary memory. The slope fit starts
+from Rfit's BFGS minimization of the dispersion, then solves the linear
+program only on the pairs whose residuals are close; the other pairs keep
+their signs and enter as one linear term ([Portnoy and Koenker](references.md#pk97)).
+The solution is accepted only when no excluded pair can change sign, so the
+fit is still the exact minimum: a sample of 2,000 takes about a second
+instead of minutes. With group indicators the minimum is often not unique
+(as the median of an even number of values); the fit is then the minimizer
+with the smallest residual sum of squares, so `tau`, `drop_test` and
+`rank_anova` do not depend on the group labels or the contrasts.
 `drop_test(full, reduced)` compares nested fits on the same response, the rank
 analogue of the F test; `summary()` reports it for all slopes, with the robust
 R² of Rfit. `rank_anova(y, groups)` is the one-way analysis of variance by
 ranks (Rfit's `oneway.rfit`): the drop test of the model with one center per
 group.
+
+The drop test checks that the response is the same in the same row order
+and that the reduced design lies in the full design's column space,
+including the intercept. Its F calibration is approximate under independent,
+identically distributed continuous errors. Inference that requires an
+unidentified residual scale is reported as NaN. With one residual degree
+of freedom, the small-sample factor for `tau_s` uses a denominator of one
+in place of the zero in Rfit's correction.
 
 ```pycon
 >>> from robustmodels.rank import rank_anova
@@ -86,6 +105,12 @@ are dropped (`"wilcox"`, R's default) or ranked without a sign (`"pratt"`,
 coin's default). The distributions are computed on doubled midranks, which
 are integers, so ties compare exactly. Computing the rank sum distribution
 costs about `m N^3` operations for samples of sizes `m <= n` and `N = m + n`.
+
+For paired signed ranks the null shift `mu` is subtracted from `x - y`. The
+test sums the three terms accurately so that a small shift remains visible
+when two large terms cancel. If the final difference overflows float64,
+the test raises `ValueError`. Rescale both samples and `mu` to common units
+before testing in that case.
 
 ## Numerical checks and sources
 

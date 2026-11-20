@@ -387,6 +387,234 @@ suggests that the normal reference does not describe the bulk of the data, in
 which case the cutoffs are only rough guides. The distances and residuals come
 from the robust fit, so the outliers do not bend the reference themselves.
 
+## Bagplot
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-bagplot
+   :include-source: true
+   :alt: Bagplot with a Tukey median, central bag, fence and three outliers.
+
+   import numpy as np
+   from robustmodels import plots
+
+   X = np.random.default_rng(0).normal(size=(100, 2))
+   X[:3] = [[6, 6], [7, -6], [-8, 5]]
+   ax = plots.bagplot(X, feature_names=["First measurement", "Second measurement"])
+```
+
+The bagplot is the bivariate boxplot. The cross is the Tukey median, the dark
+bag holds the half of the observations with the largest halfspace depth, and
+the dashed fence is the bag inflated by `factor` (3 by default) from the
+median. The light loop is the convex hull of the observations inside the
+fence; observations outside it are flagged. A bag elongated along a diagonal
+shows correlation, and a bag off center inside the loop shows skewness. For
+more than 200 observations the median and the bag are computed on a random
+subset of `max_samples` rows, controlled by `random_state`. See the
+[depth guide](depth.md).
+
+## Clusters and trimmed observations
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-cluster
+   :include-source: true
+   :alt: Three clusters of different shapes with 97.5% ellipses and trimmed noise points.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.cluster import TClust
+
+   rng = np.random.default_rng(1)
+   X = np.vstack([
+       rng.multivariate_normal([0, 0], np.eye(2), 100),
+       rng.multivariate_normal([5, 5], [[4, 0], [0, 0.3]], 80),
+       rng.multivariate_normal([-4, 6], [[1, 0.8], [0.8, 1]], 60),
+       rng.uniform(-10, 12, (12, 2)),
+   ])
+   ax = plots.cluster_plot(TClust(3, random_state=0).fit(X), X)
+```
+
+Observations are colored by cluster and the trimmed ones are orange
+diamonds. Crosses and ellipses are the center and 97.5% tolerance ellipse of
+each cluster's normal model. With more than two variables, `features` selects
+the two columns on the axes and the ellipses are the marginal ones of those
+columns. Passing other data than the training sample assigns it with
+`model.predict`. See the [clustering guide](cluster.md).
+
+## Choosing the number of clusters and the trimming
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-ctlcurves
+   :include-source: true
+   :alt: Trimmed likelihood against the trimming level for one to four clusters.
+
+   import numpy as np
+   from robustmodels import plots
+
+   rng = np.random.default_rng(4)
+   X = np.vstack([
+       rng.multivariate_normal([0, 0], np.eye(2), 100),
+       rng.multivariate_normal([5, 5], [[4, 0], [0, 0.3]], 80),
+       rng.multivariate_normal([-4, 6], [[1, 0.8], [0.8, 1]], 60),
+       rng.uniform(-10, 12, (15, 2)),
+   ])
+   ax = plots.ctl_curves(X, n_init=100, random_state=0)
+```
+
+`ctl_curves` fits `TClust` for every number of clusters in `n_clusters` and
+every trimming level in `alphas`, and draws the trimmed classification
+log-likelihood against `alpha`, one curve per number of clusters. The
+likelihood always grows with the number of clusters. Choose the smallest `k`
+whose curve is close to that of `k + 1`, and the smallest `alpha` from which
+they stay close. Here the curves for three and four clusters merge from
+`alpha = 0.04`. Each point is a full fit, so the plot takes
+`len(n_clusters) * len(alphas)` times as long as one fit; lower `n_init` for
+a first look.
+
+## Highest density regions
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-hdr
+   :include-source: true
+   :alt: Filled 25%, 50% and 75% highest density regions of a two-mode sample.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.density import KernelDensity
+
+   rng = np.random.default_rng(1)
+   X = np.vstack([
+       rng.multivariate_normal([0, 0], [[1, 0.6], [0.6, 1]], 250),
+       rng.multivariate_normal([3, 3], [[0.4, -0.2], [-0.2, 0.4]], 150),
+   ])
+   ax = plots.hdr_plot(KernelDensity().fit(X))
+```
+
+The region of probability `prob` is the smallest region with that
+probability, `{x : f(x) >= level}`, with the level from
+`model.hdr_level(prob)`. For two variables the regions are filled, darker for
+the smaller ones, over the observations; for one variable they are shaded
+under the density curve over a rug of the observations. A region that splits
+into separate pieces reveals several modes; here every region has one piece
+around each of the two modes. See
+the [density guide](density.md).
+
+## Log-concave density
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-logconcave
+   :include-source: true
+   :alt: Log-concave density estimate and its log density for a gamma sample.
+
+   import matplotlib.pyplot as plt
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.shape import LogConcaveDensity
+
+   x = np.random.default_rng(3).gamma(2, size=250)
+   model = LogConcaveDensity().fit(x)
+
+   fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.8), layout="constrained")
+   plots.log_concave_plot(model, ax=axes[0])
+   plots.log_concave_plot(model, log=True, ax=axes[1])
+```
+
+The left panel draws the estimate over the histogram of the sample, and the
+right panel, with `log=True`, its logarithm. The log density is piecewise
+linear and concave; the knots are the observations where its slope changes.
+The estimate is zero outside the range of the sample. A histogram with two
+modes or heavier tails than the estimate contradicts the log-concave
+assumption. See the [shape-constrained guide](shape.md).
+
+## Antitonic score
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-score
+   :include-source: true
+   :alt: Estimated antitonic score, bounded in the tails, against the normal score.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.shape import ScoreMatchingRegressor
+
+   rng = np.random.default_rng(4)
+   X = rng.normal(size=(400, 2))
+   y = 1 + X @ [2.0, -1.0] + rng.standard_t(2, 400)
+   ax = plots.score_plot(ScoreMatchingRegressor().fit(X, y), X, y)
+```
+
+The curve is the estimated score `psi`, minus the derivative of the convex
+loss, against the residual, over a rug of the residuals. The straight line is
+the score of a normal distribution with the MAD of the residuals, which least
+squares uses. Where the estimated score flattens, large residuals stop gaining
+influence: here the errors have Student t tails with two degrees of freedom.
+The horizontal axis covers the central 98% of the residuals, widened by a
+quarter of that range on each side. See the
+[shape-constrained guide](shape.md#regression-by-antitonic-score-matching).
+
+## Comparing coefficients across fits
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-coefficients
+   :include-source: true
+   :alt: Coefficient estimates with 95% intervals from MM, rank and score matching fits and least squares.
+
+   import numpy as np
+   from robustmodels import plots
+   from robustmodels.rank import RankRegressor
+   from robustmodels.regression import MMRegressor
+   from robustmodels.shape import ScoreMatchingRegressor
+
+   rng = np.random.default_rng(4)
+   X = rng.normal(size=(150, 3))
+   y = 1 + X @ [2.0, -1.0, 0.0] + rng.standard_t(2, 150)
+   y[:8] += 25 * X[:8, 2]  # eight observations tie y to the third variable
+   fits = [MMRegressor().fit(X, y), RankRegressor().fit(X, y), ScoreMatchingRegressor().fit(X, y)]
+   ax = plots.coefficient_plot(fits, labels=["MM", "Rank", "Score matching"], X=X, y=y,
+                               feature_names=["dose", "age", "site"])
+```
+
+Each row is a coefficient and each fit a marker with its interval
+`estimate ± z * standard error`, with `z` the normal quantile of `level`
+(0.95 by default). Passing both `X` and `y` adds least squares with its
+classical standard errors. Here eight observations make the third variable
+look important to least squares, while the robust fits agree that it is not.
+Every model needs `std_errors_` and the same predictors; set
+`intercept=False` to hide the intercept row. See the
+[regression guide](regression.md#comparing-fits).
+
+## Depth-depth plot
+
+```{eval-rst}
+.. plot::
+   :filename-prefix: plots-ddplot
+   :include-source: true
+   :alt: Depth-depth plot of two samples whose spreads differ, with points off the diagonal.
+
+   import numpy as np
+   from robustmodels import plots
+
+   rng = np.random.default_rng(4)
+   control = rng.normal(size=(150, 2))
+   treated = rng.normal(size=(120, 2)) * [1.6, 1]
+   ax = plots.dd_plot(control, treated, labels=["Control", "Treated"])
+```
+
+Every observation of both samples is placed at its halfspace depth in the
+first sample and in the second. Samples from one distribution keep the points
+near the diagonal. A difference in location bends them into a lens, and a
+difference in spread, as here, moves them to one side. For three or more
+variables the depth is approximated with random directions controlled by
+`random_state`. The plot is descriptive; `density.kde_permutation_test` and
+`density.kde_test` test the difference. See the
+[depth guide](depth.md#comparing-two-samples).
+
 ## Customizing and saving
 
 Use `ax=` to compose several diagnostics. Functions return the supplied axes,
@@ -459,16 +687,8 @@ from `plt.subplots(1, 2, figsize=(10.4, 3.8), layout="constrained")`.
 
 The [validation notes](validation.md) record the pre-release comparison and
 its limits. These plots are tools for investigating observations, not rules
-for automatically deleting them.
-
-The [clustering guide](cluster.md) includes an executable `cluster_plot`
-example, and the [depth guide](depth.md) an executable bagplot example, with the
-Tukey median, 50% bag, inflated fence and observed outliers. The
-[density guide](density.md) shows `hdr_plot`, and the
-[shape-constrained guide](shape.md) `log_concave_plot` and `score_plot`. The
-[regression guide](regression.md#comparing-fits) shows `coefficient_plot`, the
-[depth guide](depth.md#comparing-two-samples) `dd_plot` and the
-[clustering guide](cluster.md#choosing-the-parameters) `ctl_curves`.
+for automatically deleting them. The [examples with classic data](examples.md)
+apply them to data sets whose outliers are documented.
 
 ## Reference
 

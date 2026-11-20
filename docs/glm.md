@@ -43,6 +43,13 @@ True
 
 ## Defining equations and inference assumptions
 
+`MallowsPoissonRegressor` accepts a known `offset` in both `fit` and
+`predict`. For strictly positive observation times `t`, pass
+`offset=np.log(t)`. The model is `E[Y|X,t] = t * exp(intercept + X @ coef)`.
+Supply the corresponding offset again when predicting counts for new
+exposure times. Without an offset, `predict` returns the mean at unit
+exposure per row.
+
 Mallows solves a Huberized Pearson estimating equation with its conditional
 model expectation subtracted. For a fixed design, the covariance uses the
 conditional score variance and sensitivity for each observation. Independent
@@ -82,10 +89,13 @@ global minimum. Standard errors require a locally identified regular solution.
   different procedures, and numerical equality is not an acceptance condition.
 - Linear predictors used to evaluate means are clipped to `[-30, 30]` for
   numerical stability. Mallows scoring steps change each predictor by at most
-  5. The MT gradient differentiates its implemented clipped objective. A final
-  MT solution touching the numerical cap is reported with `converged_=False`,
-  a `RuntimeWarning` and unavailable covariance, standard errors and tests
-  (`NaN`), so a numerical plateau is not presented as ordinary inference.
+  5. The MT gradient differentiates its implemented clipped objective. A
+  final MT solution touching the numerical cap, or a Mallows Poisson solution
+  above `+30`, reports `converged_=False`, a `RuntimeWarning` and unavailable
+  inference (`NaN`). Below `-30`, and at either cap of the logistic model, an
+  observation's Mallows score is of order `sqrt(V(mu))`, about `3e-7`, so the cap
+  does not change the fit; a well-fitted leverage point there keeps its
+  inference.
 - Separated logistic data can lack finite coefficients. Check `converged_`
   and the emitted warnings. A small gradient alone does not establish existence
   or identification. The usual normal inference is asymptotic.
