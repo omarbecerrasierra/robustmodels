@@ -63,7 +63,8 @@ class TClust(ClusterMixin, BaseEstimator):
     covariances_ : ndarray of shape (n_clusters, n_features, n_features)
         Restricted covariance matrices.
     weights_ : ndarray of shape (n_clusters,)
-        Share of the retained observations in each cluster.
+        Fitted cluster proportions, or equal weights. At the iteration cap,
+        these are the weights used for the last assignment.
     objective_ : float
         Trimmed classification log-likelihood of the solution.
     threshold_ : float
@@ -71,6 +72,8 @@ class TClust(ClusterMixin, BaseEstimator):
         its cluster; ``predict`` trims observations below it (up to rounding).
     n_iter_ : int
         Concentration steps of the selected solution after its start.
+    converged_ : bool
+        Whether the selected solution reached a stable assignment.
 
     References
     ----------
@@ -134,6 +137,10 @@ class TClust(ClusterMixin, BaseEstimator):
         kept = math.floor(len(X) * (1 - self.alpha))
         if kept < self.n_clusters:
             raise ValueError("alpha trims too many observations for n_clusters clusters")
+        origin = X[0]
+        X = X - origin
+        scale = np.max(np.abs(X)) or 1.0
+        X = X / scale
         rng = as_generator(self.random_state)
         starts = [
             self._concentrate(X, self._random_start(X, kept, rng), kept, 3)
@@ -150,12 +157,14 @@ class TClust(ClusterMixin, BaseEstimator):
         relabel = np.full(self.n_clusters + 1, -1)
         relabel[order] = np.arange(self.n_clusters)
         self.labels_ = relabel[best["labels"]]
-        self.means_ = best["means"][order]
-        self.covariances_ = best["covariances"][order]
+        self.means_ = best["means"][order] * scale + origin
+        self.covariances_ = best["covariances"][order] * scale * scale
         self.weights_ = best["weights"][order]
-        self.objective_ = best["objective"]
-        self.threshold_ = best["threshold"]
+        adjustment = X.shape[1] * np.log(scale)
+        self.objective_ = best["objective"] - kept * adjustment
+        self.threshold_ = best["threshold"] - adjustment
         self.n_iter_ = best["n_iter"]
+        self.converged_ = best["converged"]
         return self
 
     def predict(self, X):
@@ -195,12 +204,15 @@ class TClust(ClusterMixin, BaseEstimator):
     def _concentrate(self, X, parameters, kept, steps):
         """Concentration steps: restrict, assign and trim, then re-estimate."""
         labels = None
+        last_scored = parameters
+        converged = False
         for step in range(steps):
             covariances = _restrict(
                 parameters["covariances"], parameters["sizes"], self.restr_factor
             )
             if covariances is None:  # every eigenvalue is zero
                 if step:
+                    parameters = last_scored
                     break
                 covariances = np.tile(np.eye(X.shape[1]), (self.n_clusters, 1, 1))
             parameters["covariances"] = covariances
@@ -214,12 +226,11 @@ class TClust(ClusterMixin, BaseEstimator):
             if converged:
                 break
             if step < steps - 1:  # no re-estimation after the last assignment, as tclust
+                last_scored = parameters
                 parameters = self._estimate(X, labels, kept)
         retained = labels >= 0
         fitted = scores[retained, labels[retained]]
         sizes = np.bincount(labels[retained], minlength=self.n_clusters).astype(float)
-        if not self.equal_weights:
-            parameters["weights"] = sizes / kept
         return {
             **parameters,
             "sizes": sizes,
@@ -227,6 +238,7 @@ class TClust(ClusterMixin, BaseEstimator):
             "objective": float(fitted.sum()),
             "threshold": float(fitted.min()),
             "n_iter": step + 1,
+            "converged": converged,
         }
 
 
@@ -236,7 +248,7 @@ def _discriminant(X, means, covariances, weights):
     out = np.empty((len(X), len(means)))
     for j, (mean, covariance, weight) in enumerate(zip(means, covariances, weights, strict=True)):
         values, vectors = np.linalg.eigh(covariance)
-        values = np.maximum(values, max(values.max(), 1.0) * 1e-12)
+        values = np.maximum(values, values.max() * np.finfo(float).eps)
         z = (X - mean) @ vectors / np.sqrt(values)
         logdet = np.log(values).sum()
         with np.errstate(divide="ignore"):

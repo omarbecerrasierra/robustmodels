@@ -12,12 +12,14 @@ remain readable in grayscale.
 """
 
 import numpy as np
-from scipy.stats import chi2, norm
+from scipy.stats import chi2, norm, rankdata
 from sklearn.covariance import EmpiricalCovariance
+from sklearn.utils.validation import check_array
 
 from ._validation import as_1d, check_count, check_range
 from .covariance import MCD, _logdet
 from .depth import bagplot_stats, halfspace_depth
+from .outliers import _adjusted_fences
 from .scale import medcouple
 
 __all__ = [
@@ -929,8 +931,8 @@ def coefficient_plot(
     Each row is a coefficient and each model a marker with its interval
     ``estimate +- z * standard error``, ``z`` the normal quantile of
     ``level``. Passing ``X`` and ``y`` adds least squares, with its classical
-    standard errors, as the reference: where robust and classical intervals
-    separate, a few observations drive the classical conclusion.
+    standard errors, as the reference. Differences between intervals are a
+    diagnostic for sensitivity to the choice of estimator.
 
     Parameters
     ----------
@@ -956,6 +958,10 @@ def coefficient_plot(
     matplotlib.axes.Axes
     """
     models = list(models) if isinstance(models, (list, tuple)) else [models]
+    if not models:
+        raise ValueError("provide at least one fitted model")
+    if (X is None) != (y is None):
+        raise ValueError("provide both X and y for the least squares reference")
     check_range("level", level, 0, 1, low_open=True, high_open=True)
     names = [type(model).__name__ for model in models] if labels is None else list(labels)
     if len(names) != len(models):
@@ -974,7 +980,10 @@ def coefficient_plot(
     styles = [(BLUE, "o"), (VIOLET, "^"), (SECONDARY, "v"), (MUTED, "D")]
     styles = [styles[k % len(styles)] for k in range(len(models))]
     if X is not None:
-        fits.append(_least_squares(X, y))
+        reference = _least_squares(X, y)
+        if len(reference[0]) != p + 1:
+            raise ValueError("the least squares reference must use the same number of predictors")
+        fits.append(reference)
         names.append("Least squares")
         styles.append((AQUA, "s"))
     keep = slice(0 if intercept else 1, None)
@@ -1124,15 +1133,19 @@ def ctl_curves(
 def _least_squares(X, y):
     """Least squares estimates and classical standard errors, intercept first."""
     X = np.asarray(X, dtype=float)
-    X = X[:, None] if X.ndim == 1 else X
+    X = check_array(X[:, None] if X.ndim == 1 else X, dtype=float)
     y = as_1d(y)
     if len(y) != len(X):
         raise ValueError(f"y has {len(y)} values for {len(X)} rows of X")
     design = np.column_stack([np.ones(len(X)), X])
-    estimates, *_ = np.linalg.lstsq(design, y, rcond=None)
+    estimates, _, rank, _ = np.linalg.lstsq(design, y, rcond=None)
+    if len(y) <= rank or rank < design.shape[1]:
+        raise ValueError(
+            "least squares intervals require full rank and residual degrees of freedom"
+        )
     residuals = y - design @ estimates
     variance = residuals @ residuals / (len(y) - design.shape[1])
-    return estimates, np.sqrt(variance * np.diag(np.linalg.pinv(design.T @ design)))
+    return estimates, np.sqrt(variance) * np.linalg.norm(np.linalg.pinv(design), axis=1)
 
 
 def distance_qq(model, X, *, id_n=3, ax=None):
@@ -1283,9 +1296,7 @@ def _standardized_residuals(model, X, y):
 
 def _plotting_positions(values):
     """Probability ``(rank - 0.5) / n`` of each value, in the order given."""
-    positions = np.empty(len(values))
-    positions[np.argsort(values, kind="stable")] = (np.arange(len(values)) + 0.5) / len(values)
-    return positions
+    return (rankdata(values, method="ordinal") - 0.5) / len(values)
 
 
 def _qq(ax, quantiles, values, flagged, severity, id_n):
@@ -1432,13 +1443,9 @@ def _fivenum(x):
 def _adjusted_box_stats(x):
     """Box statistics of the adjusted boxplot, as R's ``robustbase::adjboxStats``."""
     _, q1, median, q3, _ = _fivenum(x)
-    iqr = q3 - q1
     mc = medcouple(x)
-    if mc >= 0:
-        fences = q1 - 1.5 * np.exp(-4 * mc) * iqr, q3 + 1.5 * np.exp(3 * mc) * iqr
-    else:
-        fences = q1 - 1.5 * np.exp(-3 * mc) * iqr, q3 + 1.5 * np.exp(4 * mc) * iqr
-    out = (x < fences[0]) | (x > fences[1])
+    lower, upper = _adjusted_fences(q1, q3, mc)
+    out = (x < lower) | (x > upper)
     inside = x[~out]
     return {
         "med": median,
@@ -1448,5 +1455,5 @@ def _adjusted_box_stats(x):
         "whishi": inside.max(),
         "fliers": x[out],
         "mc": mc,
-        "fences": fences,
+        "fences": (lower, upper),
     }

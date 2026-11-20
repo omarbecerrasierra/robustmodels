@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scipy import optimize, stats
+from scipy.special import expit
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.estimator_checks import parametrize_with_checks
 
@@ -323,3 +324,60 @@ def test_mallows_covariance_from_conditional_distribution_derivatives():
     bread = np.linalg.inv(design.T @ (design * np.array(sensitivity)[:, None]))
     meat = design.T @ (design * np.array(variance)[:, None])
     np.testing.assert_allclose(fit.cov_params_, bread @ meat @ bread.T, rtol=1e-7)
+
+
+def test_mallows_poisson_with_exposure_solves_the_corrected_score():
+    rng = np.random.default_rng(96)
+    X = rng.normal(size=(160, 1))
+    exposure = rng.uniform(0.2, 3, size=len(X))
+    y = rng.poisson(exposure * np.exp(0.5 + 0.3 * X[:, 0]))
+    model = MallowsPoissonRegressor(tol=1e-11).fit(X, y, offset=np.log(exposure))
+    mu = model.predict(X, offset=np.log(exposure))
+    np.testing.assert_allclose(mu, exposure * model.predict(X))
+    counts = np.arange(100)
+    roots = np.sqrt(mu)
+    score = np.clip((y - mu) / roots, -model.c, model.c)
+    mass = stats.poisson.pmf(counts, mu[:, None])
+    possible = np.clip((counts - mu[:, None]) / roots[:, None], -model.c, model.c)
+    corrected = (score - (mass * possible).sum(axis=1)) * roots
+    np.testing.assert_allclose(np.c_[np.ones(len(X)), X].T @ corrected, 0, atol=1e-8)
+    ordinary = MallowsPoissonRegressor().fit(X, y)
+    constant = MallowsPoissonRegressor().fit(X, y, offset=2)
+    np.testing.assert_allclose(constant.predict(X, offset=2), ordinary.predict(X), rtol=1e-8)
+    assert constant.intercept_ + 2 == pytest.approx(ordinary.intercept_)
+    for bad in ([0, 1], np.inf):
+        with pytest.raises(ValueError, match="offset"):
+            model.predict(X, offset=bad)
+
+
+def test_mallows_poisson_cap_does_not_report_inference():
+    X = np.arange(8.0)[:, None]
+    offset = np.tile([-100.0, 100.0], 4)
+    with pytest.warns(RuntimeWarning, match="did not converge"):
+        fit = MallowsPoissonRegressor(max_iter=2).fit(X, np.ones(len(X)), offset=offset)
+    assert not fit.converged_
+    assert np.isnan(fit.std_errors_).all()
+
+
+def test_logistic_probability_of_the_rare_class_is_retained():
+    X = np.arange(8.0)[:, None]
+    model = MallowsLogisticRegression().fit(X, [0, 0, 1, 0, 1, 1, 0, 1])
+    point = [[(50 - model.intercept_) / model.coef_[0]]]
+    probability = model.predict_proba(point)[0, 0]
+    assert probability > 0
+    assert probability == pytest.approx(1 / (1 + np.exp(50)), abs=0)
+
+
+def test_mallows_reports_inference_when_only_negligible_scores_are_capped():
+    # A leverage point fitted with |eta| > 30: its score contribution is ~0 either way.
+    rng = np.random.default_rng(0)
+    x = np.r_[rng.normal(size=200), 40.0]
+    y = (rng.uniform(size=x.size) < expit(0.5 + x)).astype(int)
+    logistic = MallowsLogisticRegression().fit(x[:, None], y)
+    z = np.r_[rng.normal(size=150), 40.0]
+    counts = rng.poisson(np.exp(1 - z))
+    poisson = MallowsPoissonRegressor().fit(z[:, None], counts)
+    for model, values in ((logistic, x), (poisson, z)):
+        assert np.max(np.abs(model._linear_predictor(values[:, None]))) > 30
+        assert model.converged_
+        assert np.isfinite(model.std_errors_).all()

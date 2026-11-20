@@ -21,6 +21,34 @@ from robustmodels.scale import (
 )
 
 
+@pytest.mark.parametrize("estimate", [mad, m_scale, tau_scale])
+def test_scale_with_extreme_units(estimate):
+    assert estimate([1.2e308, 1.2e308]) == 0
+    x = np.array([-0.5, -0.1, 0, 0.2, 0.8])
+    expected = estimate(x)
+    for units in (1e-300, 1e308):
+        assert estimate(x * units) / units == pytest.approx(expected, rel=1e-10)
+
+
+def test_a_huge_outlier_does_not_erase_the_scale_of_the_bulk():
+    x = np.array([1, 2, 3, 4, 5, 6]) * 1e-300
+    x[-1] = 1e308
+    assert mad(x, consistency=False) / 1e-300 == pytest.approx(1.5)
+    assert m_scale(x) > 0
+    assert tau_scale(x) > 0
+
+
+def test_mad_even_median_can_mix_subnormal_and_huge_values():
+    assert mad([1e-320, 1.2e308, 1.2e308, 1.2e308]) == 0
+
+
+def test_mad_recovers_finite_median_when_a_middle_deviation_overflows():
+    center = 2.0**1023
+    x = [-1.5 * center, -center, 1e-320, 0.0]
+    assert mad(x, center=center, consistency=False) == 1.5 * center
+    assert np.isinf(mad(x, center=center))
+
+
 def test_consistency_constants():
     assert MAD_CONSTANT == pytest.approx(1.4826022185)
     assert QN_CONSTANT == pytest.approx(2.2191444660)

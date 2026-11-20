@@ -16,6 +16,11 @@ from robustmodels.scale import mad
 ESTIMATORS = (hodges_lehmann, m_location, tau_location, trimmed_mean, winsorized_mean)
 
 
+@pytest.mark.parametrize("estimate", ESTIMATORS)
+def test_location_of_large_equal_finite_values(estimate):
+    assert estimate([1.2e308, 1.2e308]) == pytest.approx(1.2e308)
+
+
 def test_hodges_lehmann_matches_definition(samples, monkeypatch):
     for x in samples:
         assert hodges_lehmann(x) == ref.hodges_lehmann(x)

@@ -56,6 +56,20 @@ def test_nonlinear_covariance_against_analytic_jacobian():
     np.testing.assert_allclose(fit.params_, [10, 0.7], atol=0.35)
 
 
+def test_small_but_identifiable_jacobian_column_has_nonzero_uncertainty():
+    def model(X, a, b):
+        return a * X[:, 0] + 1e-8 * b * X[:, 1]
+
+    X = np.random.default_rng(52).normal(size=(40, 2))
+    y = 1e-8 * (X[:, 0] + X[:, 1] + 0.1 * np.sin(X[:, 0]))
+    fit = NonlinearMRegressor(model, [1e-8, 1]).fit(X, y)
+    # The inverse information transforms as the inverse square of the
+    # parameter units. Forming the normal equations loses this direction.
+    design = np.column_stack([X[:, 0], 1e-8 * X[:, 1]])
+    base = np.linalg.inv(design.T @ design).diagonal()
+    assert fit.cov_params_[1, 1] / fit.cov_params_[0, 0] == pytest.approx(base[1] / base[0])
+
+
 def test_exact_fit_assigns_zero_weight_to_nonzero_residuals():
     def constant(X, a):
         return np.full(len(X), a)

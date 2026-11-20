@@ -12,6 +12,7 @@ from robustmodels.outliers import (
     AdjustedOutlyingness,
     DirectionalOutlyingness,
     StahelDonohoOutlyingness,
+    _log_cutoff,
     _whiskers,
 )
 from robustmodels.scale import mad
@@ -62,6 +63,15 @@ def test_univariate_definitions():
     logs = np.log(0.1 + ao.outlyingness_)
     cutoff = np.exp(np.median(logs) + mad(logs) * stats.norm.ppf(0.995)) - 0.1
     assert ao.cutoff_ == pytest.approx(cutoff)
+
+
+def test_stahel_donoho_preserves_zero_mad_at_a_large_center():
+    X = np.array([1e-320, 1.2e308, 1.2e308, 1.2e308])[:, None]
+    fit = StahelDonohoOutlyingness().fit(X)
+    np.testing.assert_array_equal(fit.centers_, [1.2e308])
+    np.testing.assert_array_equal(fit.scales_, [0.0])
+    np.testing.assert_array_equal(fit.outlyingness_, [np.inf, 0, 0, 0])
+    np.testing.assert_array_equal(fit.predict(X), [-1, 1, 1, 1])
 
 
 @pytest.mark.parametrize("detector", DETECTORS)
@@ -159,6 +169,16 @@ def test_a_majority_on_one_point_makes_the_rest_infinitely_outlying(detector):
     assert np.all(fit.outlyingness_[:30] == 0)
     assert np.all(np.isinf(fit.outlyingness_[30:]))
     np.testing.assert_array_equal(fit.predict(X), np.where(np.arange(40) < 30, 1, -1))
+
+
+def test_infinite_outlyingness_does_not_poison_the_finite_cutoff():
+    X = [[1, 0], [1, 0], [1, 2], [1, 0], [1, 2], [3, 1], [3, 1], [0, 0], [2, 0], [0, 0]]
+    fit = DirectionalOutlyingness(random_state=0).fit(X)
+    infinite = np.isinf(fit.outlyingness_)
+    assert infinite.sum() == 7
+    assert np.isfinite(fit.cutoff_)
+    np.testing.assert_array_equal(fit.predict(X), np.where(infinite, -1, 1))
+    assert _log_cutoff(np.full(2, np.inf)) == 0
 
 
 def test_random_directions_are_reproducible():

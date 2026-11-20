@@ -45,3 +45,21 @@ def check_option(name, value, options):
     """Raise ``ValueError`` unless ``value`` is one of ``options``."""
     if value not in options:
         raise ValueError(f"{name} must be one of {list(options)}, got {value!r}")
+
+
+def is_exact_fit(y, residuals):
+    """Whether all residuals are within roundoff at the scale of the response."""
+    return np.max(np.abs(residuals)) <= 32 * np.finfo(float).eps * np.max(np.abs(y))
+
+
+def unit_exponent(x, reference=0.0, *, axis=None):
+    """Power-of-two rescaling that preserves small observations in a wide range."""
+    magnitude = np.abs(x)
+    largest = np.maximum(magnitude.max(axis=axis), abs(reference))
+    smallest = magnitude.min(axis=axis, where=magnitude > 0, initial=np.inf)
+    if reference != 0:
+        smallest = np.minimum(smallest, abs(reference))
+    exponent = np.frexp(largest)[1]
+    # Leave the smallest normal observation in the normal range.
+    normal_limit = np.frexp(smallest)[1] - np.finfo(float).minexp - 1
+    return np.minimum(exponent, np.maximum(0, normal_limit))

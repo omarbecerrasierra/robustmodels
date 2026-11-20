@@ -18,12 +18,12 @@ from sklearn.covariance import EmpiricalCovariance
 from sklearn.utils.validation import validate_data
 
 from ._validation import as_generator, check_count, check_option, check_range
-from .outliers import StahelDonohoOutlyingness
+from .location import tau_location
+from .outliers import StahelDonohoOutlyingness, _ratio
 from .scale import (
     _bisquare_weights,
     _mscale_bisquare,
     _rho,
-    _tau_estimates,
     _tuning_for_breakdown,
     _tuning_for_shape_efficiency,
     mad,
@@ -59,7 +59,11 @@ class _RobustCovariance(EmpiricalCovariance):
     def _set_estimates(self, location, covariance, X):
         self.location_ = np.asarray(location, dtype=float)
         self.covariance_ = np.asarray(covariance, dtype=float)
-        self.precision_ = linalg.pinvh(self.covariance_)
+        if _logdet(self.covariance_) == -np.inf:
+            self.precision_ = linalg.pinvh(self.covariance_)
+        else:
+            scale, correlation = _correlation(self.covariance_)
+            self.precision_ = linalg.pinvh(correlation) / scale / scale[:, None]
         diff = X - self.location_
         self.dist_ = np.sum((diff @ self.precision_) * diff, axis=1)
 
@@ -848,7 +852,7 @@ class OGK(_RobustCovariance):
         scale_fn = _SCALES[self.scale]
         transformed, basis = _orthogonalize(X, scale_fn, self.n_iter)
         if self.scale == "tau":
-            center = np.array([_tau_estimates(column, 4.5)[0] for column in transformed.T])
+            center = np.array([tau_location(column) for column in transformed.T])
         else:
             center = np.median(transformed, axis=0)
         scales = _scales(transformed, scale_fn)
@@ -1101,7 +1105,7 @@ class PenaPrieto(_RobustCovariance):
             self.n_iter_ += 1
             projections = Z[keep] @ _ksd_directions(Z[keep], n_directions, rng)
             deviations = np.abs(projections - np.median(projections, axis=0))
-            t = _ratio_max(deviations, cutoff * np.median(deviations, axis=0))
+            t = _ratio(deviations, cutoff * np.median(deviations, axis=0)).max(axis=1)
             if not np.any(t > 1):
                 break
             if np.sum(t <= 1) <= fewest:
@@ -1133,12 +1137,6 @@ def _standardize(X):
     if _logdet(covariance) == -np.inf:
         raise ValueError("X is singular: the observations lie on a hyperplane")
     return linalg.solve_triangular(np.linalg.cholesky(covariance), (X - location).T, lower=True).T
-
-
-def _ratio_max(deviations, scales):
-    """Largest ``deviation / scale`` of each row; a zero scale only counts nonzero deviations."""
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(deviations == 0, 0.0, deviations / scales).max(axis=1)
 
 
 def _ksd_directions(Z, n_directions, rng):
@@ -1483,20 +1481,29 @@ def _mahalanobis_sq(X, location, cov):
     """Squared Mahalanobis distances (``cov`` must be positive definite)."""
     centered = X - location
     cholesky = np.linalg.cholesky(cov)
-    standardized = np.linalg.solve(cholesky, centered.T)
+    standardized = linalg.solve_triangular(cholesky, centered.T, lower=True)
     return np.sum(standardized**2, axis=0)
 
 
 def _logdet(cov):
-    """``log det(cov)``, or ``-inf`` if ``cov`` is numerically singular."""
-    eigenvalues = np.linalg.eigvalsh(cov)
+    """Log determinant, testing numerical rank on the correlation scale."""
+    if np.any(cov.diagonal() <= 0):
+        return -np.inf
+    scale, correlation = _correlation(cov)
+    eigenvalues = np.linalg.eigvalsh(correlation)
     if eigenvalues[0] <= 1e-12 * eigenvalues[-1]:
         return -np.inf
-    return float(np.log(eigenvalues).sum())
+    return float(np.log(eigenvalues).sum() + 2 * np.log(scale).sum())
+
+
+def _correlation(cov):
+    scale = np.sqrt(cov.diagonal())
+    return scale, cov / scale / scale[:, None]
 
 
 def _mean_cov(X):
-    return X.mean(axis=0), np.atleast_2d(np.cov(X, rowvar=False))
+    offsets = X - X[0]
+    return X[0] + offsets.mean(axis=0), np.atleast_2d(np.cov(offsets, rowvar=False))
 
 
 def _center_scale(X):

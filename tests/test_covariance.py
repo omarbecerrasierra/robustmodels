@@ -41,6 +41,17 @@ def test_sklearn_compatible(estimator, check):
     check(estimator)
 
 
+def test_mcd_reweighting_and_distances_are_invariant_to_variable_units():
+    X = np.random.default_rng(71).normal(size=(40, 2))
+    units = np.array([1e-9, 1])
+    first = MCD(random_state=0, n_trials=40).fit(X)
+    second = MCD(random_state=0, n_trials=40).fit(X * units)
+    np.testing.assert_array_equal(second.support_, first.support_)
+    np.testing.assert_allclose(second.covariance_ / np.outer(units, units), first.covariance_)
+    np.testing.assert_allclose(second.dist_, first.dist_)
+    np.testing.assert_allclose(second.precision_ @ second.covariance_, np.eye(2), atol=1e-7)
+
+
 def masked_problems():
     """Small samples with a tight outlier cluster shaped like the bulk."""
     rng = np.random.default_rng(7)

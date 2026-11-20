@@ -383,6 +383,16 @@ def test_coefficient_plot_draws_estimates_and_intervals():
             plots.coefficient_plot(models, **bad)
     with pytest.raises(ValueError, match="numbers of coefficients"):
         plots.coefficient_plot([models[0], RankRegressor().fit(X[:, :1], y)])
+    with pytest.raises(ValueError, match="at least one"):
+        plots.coefficient_plot([])
+    with pytest.raises(ValueError, match="both X and y"):
+        plots.coefficient_plot(models, X=X)
+    with pytest.raises(ValueError, match="same number of predictors"):
+        plots.coefficient_plot(models, X=X[:, :1], y=y)
+    with pytest.raises(ValueError, match="full rank"):
+        plots.coefficient_plot(models, X=np.column_stack([X[:, 0], X[:, 0]]), y=y)
+    with pytest.raises(ValueError, match="degrees of freedom"):
+        plots.coefficient_plot(models, X=np.array([[0, 0], [0, 1], [1, 0]]), y=[1, 2, 3])
 
 
 def test_dd_plot_places_observations_at_their_depths():

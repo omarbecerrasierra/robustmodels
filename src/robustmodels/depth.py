@@ -83,14 +83,35 @@ def halfspace_depth(X, points=None, *, exact=False, n_directions=None, random_st
     if n_directions is not None:
         check_count("n_directions", n_directions)
     if p == 1:
-        ordered = np.sort(X[:, 0])
-        below = np.searchsorted(ordered, points[:, 0], "right")
-        above = n - np.searchsorted(ordered, points[:, 0], "left")
-        return np.minimum(below, above) / n
+        return _depth_1d(np.sort(X[:, 0]), points[:, 0]) / n
     if p == 2:
         return np.array([_depth_2d(z, X) for z in points]) / n
     if exact:
         return np.array([_exact_depth(X - z) for z in points]) / n
+    # Outside the affine span the depth is zero. Inside, halfspaces of
+    # the ambient space induce halfspaces of that span.
+    center = X[0]
+    shifted = X - center
+    _, s, vh = np.linalg.svd(shifted, full_matrices=False)
+    rank = np.count_nonzero(s > max(X.shape) * np.finfo(float).eps * s[0])
+    if rank < p:
+        if rank == 0:
+            return np.all(points == center, axis=1).astype(float)
+        basis = vh[:rank].T
+        offsets = points - center
+        projected = offsets @ basis
+        error = np.max(np.abs(offsets - projected @ basis.T), axis=1)
+        scale = np.maximum(s[0], np.max(np.abs(offsets), axis=1))
+        inside = error <= 1e-12 * scale
+        result = np.zeros(len(points))
+        if inside.any():
+            result[inside] = halfspace_depth(
+                shifted @ basis,
+                projected[inside],
+                n_directions=n_directions,
+                random_state=random_state,
+            )
+        return result
     n_directions = 250 * p if n_directions is None else n_directions
     directions = _directions(X, n_directions, as_generator(random_state))
     return _projected_depth(X @ directions, points @ directions) / n
@@ -171,15 +192,20 @@ def _nonzero_depth(A):
     return best
 
 
+def _depth_1d(ordered, points, tol=0.0):
+    """Number of sample points on the less populated closed side."""
+    below = np.searchsorted(ordered, points + tol, "right")
+    above = len(ordered) - np.searchsorted(ordered, points - tol, "left")
+    return np.minimum(below, above)
+
+
 def _projected_depth(projections, points):
     """Smallest univariate depth (as a count) over the columns of the projections."""
     n = len(projections)
     depth = np.full(len(points), n)
     for column, values in zip(np.sort(projections, axis=0).T, points.T, strict=True):
         tol = _TIE_TOL * (column[-1] - column[0])
-        below = np.searchsorted(column, values + tol, "right")
-        above = n - np.searchsorted(column, values - tol, "left")
-        depth = np.minimum(depth, np.minimum(below, above))
+        depth = np.minimum(depth, _depth_1d(column, values, tol))
     return depth
 
 

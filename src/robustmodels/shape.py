@@ -3,17 +3,16 @@
 :class:`LogConcaveDensity` is the nonparametric maximum likelihood estimate of
 a univariate log-concave density, which needs no bandwidth.
 :class:`ScoreMatchingRegressor` is a linear regression whose convex loss is
-estimated from the data, so that its asymptotic variance is the smallest among
-convex M-estimators; it is a scikit-learn regressor with standard errors.
+estimated from the data by antitonic score matching.
 """
 
 import numpy as np
-from scipy import linalg, signal, stats
+from scipy import integrate, linalg, signal, stats
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.isotonic import isotonic_regression
 from sklearn.utils.validation import check_is_fitted, validate_data
 
-from ._validation import as_1d
+from ._validation import as_1d, is_exact_fit
 from .rank import _l1_fit
 from .regression import _coefficient_table
 from .scale import mad
@@ -83,8 +82,17 @@ class LogConcaveDensity(BaseEstimator):
         if len(x) < 2:
             raise ValueError("needs at least two distinct observations")
         w = counts / counts.sum()
+        # Scaling by a power of two avoids rounding distinct floats together
+        # when their ratios are representable.
+        _, exponent = np.frexp(np.max(np.abs(x)))
+        scale = np.ldexp(1.0, exponent - 1)
+        support = x / scale
+        if np.any(np.diff(support) == 0):
+            raise ValueError("the sample spans too many scales to distinguish its observations")
+        phi, knots = _active_set(support, w)
+        self._unit_scale, self._unit_support, self._unit_phi = scale, support, phi
         self.support_, self.weights_ = x, w
-        self.log_density_, knots = _active_set(x, w)
+        self.log_density_ = phi - np.log(scale)
         self.knots_ = x[knots]
         return self
 
@@ -92,20 +100,22 @@ class LogConcaveDensity(BaseEstimator):
         """Log density at each value of ``X`` (``-inf`` outside the range of the sample)."""
         check_is_fitted(self)
         t = np.asarray(X, dtype=float).ravel()
-        x, phi = self.support_, self.log_density_
-        inside = (t >= x[0]) & (t <= x[-1])
-        return np.where(inside, np.interp(t, x, phi), -np.inf)
+        low, high = self.support_[[0, -1]]
+        unit = np.clip(t, low, high) / self._unit_scale
+        value = np.interp(unit, self._unit_support, self.log_density_)
+        return np.where((t < low) | (t > high), -np.inf, value)
 
     def cdf(self, X):
         """Distribution function at each value of ``X``."""
         check_is_fitted(self)
-        t = np.asarray(X, dtype=float).ravel()
-        x, phi = self.support_, self.log_density_
+        low, high = self.support_[[0, -1]]
+        t = np.clip(np.asarray(X, dtype=float).ravel(), low, high) / self._unit_scale
+        x, phi = self._unit_support, self._unit_phi
         j = np.clip(np.searchsorted(x, t, side="right") - 1, 0, len(x) - 2)
         dx = np.diff(x)
         start = np.r_[0, np.cumsum(dx * _j00(phi[:-1], phi[1:]))]
         length = np.clip(t - x[j], 0, dx[j])
-        change = (phi[j + 1] - phi[j]) / dx[j] * length
+        change = (phi[j + 1] - phi[j]) * (length / dx[j])
         return np.clip(start[j] + np.exp(phi[j]) * length * _expm1_ratio(change), 0, 1)
 
 
@@ -161,6 +171,11 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
     ``asm`` with its ``"median"`` intercept; by default ``asm`` uses the mean
     of the residuals.
 
+    The efficiency result in the reference is for a sample-split estimator
+    under its regularity conditions. This implementation uses the two-pass
+    fit on the whole sample. For an exact fit, the score and inference
+    are unavailable and reported as NaN.
+
     References
     ----------
     Feng, O. Y., Kao, Y.-C., Xu, M. and Samworth, R. J. (2024). Optimal
@@ -197,7 +212,11 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
         design = np.column_stack([np.ones(n), X])
         beta = _l1_fit(design, y)  # least absolute deviations pilot
         for _ in range(2):  # estimate the score, fit, and repeat once from the new residuals
-            score = _AntitonicScore(y - design @ beta, self.symmetric)
+            fitted = y - design @ beta
+            if is_exact_fit(y, fitted):
+                score = None
+                break
+            score = _AntitonicScore(fitted, self.symmetric)
             if self.symmetric:
                 beta = _minimize_loss(design, y, beta, score)
                 fitted = y - design @ beta
@@ -208,9 +227,12 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
                 beta = np.r_[np.median(y - X @ slopes), slopes]
         self.intercept_, self.coef_ = float(beta[0]), beta[1:]
         self.scale_ = mad(y - design @ beta)
-        self.information_ = float(np.mean(score(fitted)[0] ** 2))
-        self.score_knots_, self.score_values_ = score.knots, score.values
-        if self.symmetric:
+        self.information_ = 0.0 if score is None else float(np.mean(score(fitted)[0] ** 2))
+        self.score_knots_ = np.empty(0) if score is None else score.knots
+        self.score_values_ = np.empty(0) if score is None else score.values
+        if self.information_ == 0:
+            cov = np.full((p + 1, p + 1), np.nan)
+        elif self.symmetric:
             cov = linalg.pinvh(self.information_ * design.T @ design)
         else:
             slopes = linalg.pinvh(self.information_ * np.cov(X, rowvar=False).reshape(p, p)) / n
@@ -231,8 +253,10 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
         return X @ self.coef_ + self.intercept_
 
     def psi(self, residuals):
-        """Estimated antitonic score at ``residuals``; the loss has derivative ``-psi``."""
+        """Estimated antitonic score at ``residuals``, or NaN for an exact fit."""
         check_is_fitted(self)
+        if not len(self.score_knots_):
+            return np.full_like(residuals, np.nan, dtype=float)
         score = _AntitonicScore.from_knots(self.score_knots_, self.score_values_, self.symmetric)
         return score(np.asarray(residuals, dtype=float))[0]
 
@@ -434,7 +458,7 @@ class _AntitonicScore:
             low, high = max(low, median - 20 * (q3 - q1)), min(high, median + 20 * (q3 - q1))
         grid = np.linspace(low, high, 2**15)
         density = _binned_density(r, h, grid)
-        cdf = np.r_[0, np.cumsum((density[1:] + density[:-1]) / 2 * np.diff(grid))]
+        cdf = integrate.cumulative_trapezoid(density, grid, initial=0)
         cdf /= cdf[-1]
         last = np.r_[cdf[1:] > cdf[:-1], True]  # inverse takes the largest point of a flat part
         self.median_density = float(np.interp(np.interp(0.5, cdf[last], grid[last]), grid, density))
@@ -443,8 +467,9 @@ class _AntitonicScore:
         J = np.interp(quantiles, grid, density)
         values = isotonic_regression(np.diff(J) * k, increasing=False)
         knots = (quantiles[1:] + quantiles[:-1]) / 2
-        skip = 2 * (k // n)  # n > 2
-        knots, values = knots[skip : k - skip], values[skip : k - skip]
+        skip = 2 * (k // n)
+        if k - 2 * skip >= 2:
+            knots, values = knots[skip : k - skip], values[skip : k - skip]
         jumps = np.diff(values) != 0
         keep = np.r_[jumps, True] | np.r_[True, jumps]
         self.knots, self.values, self.symmetric = knots[keep], values[keep], symmetric
@@ -464,7 +489,7 @@ class _AntitonicScore:
         j = np.clip(np.searchsorted(knots, r, side="right") - 1, 0, len(knots) - 2)
         inside = (r >= knots[0]) & (r < knots[-1])
         slope = np.where(inside, slopes[j], 0.0)
-        area = np.r_[0, np.cumsum((values[1:] + values[:-1]) / 2 * np.diff(knots))]
+        area = integrate.cumulative_trapezoid(values, knots, initial=0)
         clipped = np.clip(r, knots[0], knots[-1])
         within = (
             area[j] + (clipped - knots[j]) * (values[j] + np.interp(clipped, knots, values)) / 2

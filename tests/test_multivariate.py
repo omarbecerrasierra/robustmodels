@@ -156,6 +156,18 @@ def test_robpca_random_directions_are_reproducible():
     np.testing.assert_array_equal(first.components_, second.components_)
 
 
+def test_pca_orthogonal_distance_retains_residuals_at_large_coordinate_offsets():
+    fit = ProjectionPursuitPCA(n_components=1)
+    fit.location_ = np.array([1e16, 1e16])
+    fit.components_ = np.array([[0.6, 0.8]])
+    fit.explained_variance_ = np.array([1.0])
+    fit.n_features_in_ = 2
+    point = fit.location_ + [2, 0]
+    score, orthogonal = fit.distances(point[None])
+    assert score[0] == pytest.approx(1.2)
+    assert orthogonal[0] == pytest.approx(1.6)
+
+
 def test_number_of_components_rule():
     assert _n_components(np.array([5.0, 3.0, 1.5, 0.5]), 4) == 2  # 80% reached
     assert _n_components(np.array([5.0, 4.0, 3.0, 2.0]), 2) == 2  # capped

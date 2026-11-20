@@ -378,12 +378,19 @@ def test_mm_test_input_checks():
     X = rng.normal(size=(30, 2))
     y = X[:, 0] + rng.normal(size=30)
     mm = MMRegressor(n_trials=50, random_state=0).fit(X, y)
+    assert mm_test(mm, X, y, 0) == mm_test(mm, X, y, [0])
     with pytest.raises(ValueError, match="MMRegressor"):
         mm_test(SRegressor(n_trials=50, random_state=0).fit(X, y), X, y, [0])
     with pytest.raises(ValueError, match="test must be"):
         mm_test(mm, X, y, [0], test="lrt")
     with pytest.raises(ValueError, match="columns"):
         mm_test(mm, X, y, [2])
+    with pytest.raises(ValueError, match="columns"):
+        mm_test(mm, X, y, [0.9])
+    with pytest.raises(ValueError, match="training data"):
+        mm_test(mm, X, y[::-1], [0])
+    with pytest.raises(ValueError, match="training data"):
+        mm_test(mm, X + 0.5, y, [0], test="wald")
     exact = MMRegressor(n_trials=50, random_state=0).fit(X, 1 + X[:, 0])
     with pytest.raises(ValueError, match="exact fit"):
         mm_test(exact, X, 1 + X[:, 0], [1])

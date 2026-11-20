@@ -17,6 +17,7 @@ from sklearn.utils.validation import check_is_fitted, validate_data
 from ._validation import as_generator, check_count, check_range
 from .covariance import h_alpha_n, mcd_consistency
 from .scale import (
+    _bisquare_argument,
     _bisquare_weights,
     _mscale_bisquare,
     _rho,
@@ -425,6 +426,7 @@ class MMRegressor(_RobustRegressor):
         self.std_errors_ = np.sqrt(np.diag(cov))
         self.t_values_ = coef / self.std_errors_
         self.p_values_ = 2 * stats.t.sf(np.abs(self.t_values_), n - p)
+        self._training_design, self._training_response = design.copy(), y.copy()
         return self
 
     def summary(self, feature_names=None):
@@ -474,7 +476,7 @@ def mm_test(model, X, y, columns, *, test="deviance"):
     X : array-like of shape (n_samples, n_features)
         The data the model was fitted to.
     y : array-like of shape (n_samples,)
-    columns : sequence of int
+    columns : int or sequence of int
         Columns of ``X`` whose slopes are zero under the hypothesis.
     test : {"deviance", "wald"}, default "deviance"
 
@@ -510,11 +512,22 @@ def mm_test(model, X, y, columns, *, test="deviance"):
     if test not in ("deviance", "wald"):
         raise ValueError(f"test must be one of ['deviance', 'wald'], got {test!r}")
     X, y = validate_data(model, X, y, dtype=np.float64, y_numeric=True, reset=False)
-    columns = np.unique(np.asarray(columns, dtype=int))
+    columns = np.atleast_1d(columns)
     p = X.shape[1]
-    if not columns.size or columns.min() < 0 or columns.max() >= p:
+    if (
+        columns.ndim != 1
+        or not columns.size
+        or columns.dtype.kind not in "iu"
+        or columns.min() < 0
+        or columns.max() >= p
+    ):
         raise ValueError(f"columns must be a nonempty selection of 0..{p - 1}")
+    columns = np.unique(columns).astype(int)
     design = _design(X, model.fit_intercept)
+    if not np.array_equal(design, model._training_design) or not np.array_equal(
+        y, model._training_response
+    ):
+        raise ValueError("X and y must match the training data in their original row order")
     coef = np.r_[model.intercept_, model.coef_] if model.fit_intercept else model.coef_
     tested = columns + int(model.fit_intercept)
     kept = np.setdiff1d(np.arange(design.shape[1]), tested)
@@ -667,7 +680,8 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
             factor = (
                 scale**2 * (psi @ psi / (n - p)) / max(np.mean(np.abs(t) <= self.c), 1 / n) ** 2
             )
-            self.cov_params_ = factor * np.linalg.pinv(jacobian.T @ jacobian)
+            inverse = np.linalg.pinv(jacobian)
+            self.cov_params_ = factor * (inverse @ inverse.T)
         self.std_errors_ = np.sqrt(np.diag(self.cov_params_))
         return self
 
@@ -824,10 +838,9 @@ def _s_steps(design, y, coef, c, breakdown, zero, max_steps, tol=1e-7):
 
 def _bisquare(t, c):
     """``psi(t) = t (1 - (t/c)^2)^2``, ``psi'(t)`` and the derivative of ``_rho``."""
-    u = (t / c) ** 2
-    inside = u <= 1
-    psi = np.where(inside, t * (1 - u) ** 2, 0.0)
-    dpsi = np.where(inside, (1 - u) * (1 - 5 * u), 0.0)
+    u = _bisquare_argument(t, c)
+    psi = np.multiply(t, (1 - u) ** 2, out=np.zeros_like(u), where=u < 1)
+    dpsi = (1 - u) * (1 - 5 * u)
     return psi, dpsi, 6 * psi / c**2
 
 
