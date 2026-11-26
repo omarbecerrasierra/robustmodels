@@ -19,7 +19,7 @@ from sklearn.utils.validation import validate_data
 
 from ._validation import as_generator, check_count, check_option, check_range
 from .location import tau_location
-from .outliers import StahelDonohoOutlyingness, _finite_max, _ratio
+from .outliers import StahelDonohoOutlyingness, _largest_ratio
 from .scale import (
     _bisquare_weights,
     _mscale_bisquare,
@@ -1112,7 +1112,7 @@ class PenaPrieto(_RobustCovariance):
             projections = Z[keep] @ _ksd_directions(Z[keep], n_directions, rng)
             deviations = np.abs(projections - np.median(projections, axis=0))
             # Zero scales (ties of discrete data) are skipped, as in the detectors.
-            t = _finite_max(_ratio(deviations, cutoff * np.median(deviations, axis=0)))
+            t = _largest_ratio(deviations, cutoff * np.median(deviations, axis=0))
             if not np.any(t > 1):
                 break
             last = np.sum(t <= 1) <= fewest

@@ -12,6 +12,7 @@ from robustmodels.outliers import (
     AdjustedOutlyingness,
     DirectionalOutlyingness,
     StahelDonohoOutlyingness,
+    _largest_ratio,
     _log_cutoff,
     _whiskers,
 )
@@ -176,10 +177,11 @@ def test_zero_scales_of_discrete_data_are_ignored(detector):
     # Ties give zero scales on many directions; robustbase skips those ratios.
     X = [[1, 0], [1, 0], [1, 2], [1, 0], [1, 2], [3, 1], [3, 1], [0, 0], [2, 0], [0, 0]]
     fit = detector(random_state=0).fit(X)
-    ratios = fit._outlyingness(np.asarray(X, float) @ fit.directions_)
-    assert np.isinf(ratios).any(axis=1).sum() >= 4
-    finite = np.where(np.isfinite(ratios), ratios, -np.inf).max(axis=1)
-    np.testing.assert_array_equal(fit.outlyingness_, finite)
+    distance, scale = fit._distances(np.asarray(X, float) @ fit.directions_)
+    zero = np.broadcast_to(scale == 0, distance.shape)
+    assert ((distance > 0) & zero).any(axis=1).sum() >= 4
+    ratios = np.where(zero, 0, distance / np.where(zero, 1, scale))
+    np.testing.assert_array_equal(fit.outlyingness_, ratios.max(axis=1))
     assert np.all(fit.predict(X) == 1)
 
 
@@ -189,6 +191,13 @@ def test_likert_data_are_not_mostly_outliers():
         for _ in range(5):
             X = rng.choice(np.arange(1.0, 6.0), size=(100, 3), p=[0.05, 0.05, 0.1, 0.2, 0.6])
             assert np.mean(detector(random_state=0).fit(X).predict(X) == -1) < 0.25
+
+
+def test_zero_scales_are_skipped_even_on_a_tie():
+    # A tie with zero scale (0 / 0) carries no information, as an infinite ratio.
+    distance = np.array([[0.0, 5.0], [0.0, 0.0], [3.0, 3.0], [0.0, 3.0]])
+    scale = np.array([[0.0, 0.0], [0.0, 0.0], [0.0, 1.5], [0.0, 1.5]])
+    np.testing.assert_array_equal(_largest_ratio(distance, scale), [np.inf, 0, 2, 2])
 
 
 def test_infinite_outlyingness_does_not_poison_the_finite_cutoff():
