@@ -102,8 +102,12 @@ hyperplane, have equal projections. Rounding can break those ties, which the
 medcouple treats specially, so projections that differ only by rounding are
 merged. Exact-arithmetic projection checks verify the selected tie convention;
 software that uses another convention can produce different scores. If more
-than half of the projections on a direction coincide, the other observations
-have infinite outlyingness and are flagged.
+than half of the projections on a direction coincide, the scale is zero and the
+other observations would be infinitely outlying on that direction. As
+robustbase's `adjOutlyingness`, such ratios are ignored and each observation
+takes its largest finite ratio, so discrete data (Likert items, counts) are not
+mostly flagged. An observation with no finite ratio, as when more than half
+the sample is one point, keeps infinite outlyingness and is flagged.
 
 Sources: [Stahel-Donoho outlyingness](references.md#s81),
 [projection depth](references.md#z03),
@@ -129,10 +133,9 @@ and run scikit-learn's estimator checks. Equations (2)–(3) of
 the scales. Their 25% implosion/explosion breakdown results for the side
 scales assume a continuous symmetric unimodal model with density strictly
 decreasing away from its center. They are not a 50% breakdown guarantee for
-these scales. Zero side scales yield infinite outlyingness for nonzero
-deviations. The log cutoff uses only finite training scores, and observations
-with infinite scores are flagged even when those scores make up most of the
-sample.
+these scales. Zero side scales are skipped as zero scales above. The log
+cutoff uses only finite training scores, and observations with infinite
+scores are flagged.
 
 ## Reference
 

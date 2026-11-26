@@ -53,10 +53,15 @@ class _ProjectionOutlyingness(OutlierMixin, BaseEstimator):
         return self
 
     def outlyingness(self, X):
-        """Outlyingness of each row of ``X``: the largest standardized projection."""
+        """Outlyingness of each row of ``X``: the largest finite standardized projection.
+
+        A zero scale (most projections tied, as with discrete data) would make
+        the observations off the tie infinitely outlying; as robustbase's
+        ``adjOutlyingness``, such ratios are ignored, unless all of a row's are.
+        """
         check_is_fitted(self)
         X = validate_data(self, X, dtype=np.float64, reset=False)
-        return self._outlyingness(X @ self.directions_).max(axis=1)
+        return _finite_max(self._outlyingness(X @ self.directions_))
 
     def score_samples(self, X):
         """Projection depth in [0, 1]; higher is more central, 0 for infinite outlyingness."""
@@ -345,6 +350,13 @@ def _ratio(distance, scale):
     """``distance / scale``: 0 where the distance is 0, infinite where only the scale is."""
     with np.errstate(divide="ignore", invalid="ignore"):
         return np.where(distance == 0, 0.0, distance / scale)
+
+
+def _finite_max(ratios):
+    """Largest finite ratio of each row; infinite if the row has no finite ratio."""
+    finite = np.isfinite(ratios)
+    largest = np.max(ratios, axis=1, where=finite, initial=0.0)
+    return np.where(finite.any(axis=1), largest, np.inf)
 
 
 def _whiskers(y):

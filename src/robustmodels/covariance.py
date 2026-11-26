@@ -19,7 +19,7 @@ from sklearn.utils.validation import validate_data
 
 from ._validation import as_generator, check_count, check_option, check_range
 from .location import tau_location
-from .outliers import StahelDonohoOutlyingness, _ratio
+from .outliers import StahelDonohoOutlyingness, _finite_max, _ratio
 from .scale import (
     _bisquare_weights,
     _mscale_bisquare,
@@ -655,8 +655,8 @@ class MVE(_RobustCovariance):
 
     Approximation to the center and scaled shape of the smallest ellipsoid
     that covers ``h`` observations. The search draws random ``(p + 1)``-subsets,
-    then refits the 10 best ellipsoids to the ``h`` points they cover while the
-    volume decreases. This heuristic does not certify a minimum-volume
+    refits each ellipsoid once to the ``h`` points it covers (as rrcov), then
+    refits the 10 best while the volume decreases. This heuristic does not certify a minimum-volume
     ellipsoid, even on each selected subset. The shape is scaled for consistency
     at the normal model and reweighted as in :class:`MCD`. Breakdown point about 50% for
     ``alpha = 0.5``. Needs ``n > p + 1``.
@@ -747,7 +747,10 @@ class MVE(_RobustCovariance):
             if subset is None:
                 raise ValueError("the data lie on a hyperplane")
             location, covariance = _mean_cov(X[subset])
-            candidates.append(_ellipsoid(X, location, covariance, h))
+            # One refinement step before ranking, as rrcov: raw elemental
+            # ellipsoids rank clean subsets poorly under heavy contamination.
+            candidate = _ellipsoid(X, location, covariance, h)
+            candidates.append(_refine_ellipsoid(X, candidate, h, max_steps=1))
         candidates.sort(key=lambda candidate: candidate[0])
         refined = [_refine_ellipsoid(X, candidate, h) for candidate in candidates[:10]]
         return min(refined, key=lambda candidate: candidate[0])
@@ -761,9 +764,9 @@ def _ellipsoid(X, location, covariance, h):
     return volume, location, covariance, distances
 
 
-def _refine_ellipsoid(X, candidate, h):
+def _refine_ellipsoid(X, candidate, h, max_steps=100):
     """Refit the covered h points while the ellipsoid volume decreases."""
-    for _ in range(100):  # pragma: no branch (volumes stop decreasing long before the cap)
+    for _ in range(max_steps):
         volume, _, _, distances = candidate
         subset = np.argpartition(distances, h - 1)[:h]
         location, covariance = _mean_cov(X[subset])
@@ -1016,7 +1019,10 @@ class PenaPrieto(_RobustCovariance):
 
     Observations whose largest ``|projection - median| / MAD`` exceeds
     ``3.05 + 0.081 p`` are set aside and the directions recomputed on the
-    rest, at most 10 times or until at most half the sample remains. Set-aside
+    rest, at most 10 times or until at most half the sample remains; directions
+    with zero MAD are skipped for an observation, as in
+    :class:`~robustmodels.outliers.StahelDonohoOutlyingness`, and the trimming
+    stops before the rest would lie on a hyperplane (ties of discrete data). Set-aside
     observations then return, closest first, until ``(n + p + 1) / 2`` are in,
     and while their squared Mahalanobis distance to the mean and covariance
     of those in is below the 0.99 chi-square quantile. The estimates are the
@@ -1105,13 +1111,17 @@ class PenaPrieto(_RobustCovariance):
             self.n_iter_ += 1
             projections = Z[keep] @ _ksd_directions(Z[keep], n_directions, rng)
             deviations = np.abs(projections - np.median(projections, axis=0))
-            t = _ratio(deviations, cutoff * np.median(deviations, axis=0)).max(axis=1)
+            # Zero scales (ties of discrete data) are skipped, as in the detectors.
+            t = _finite_max(_ratio(deviations, cutoff * np.median(deviations, axis=0)))
             if not np.any(t > 1):
                 break
-            if np.sum(t <= 1) <= fewest:
-                keep = keep[np.argsort(t, kind="stable")[:fewest]]
+            last = np.sum(t <= 1) <= fewest
+            kept = keep[np.argsort(t, kind="stable")[:fewest]] if last else keep[t <= 1]
+            if _logdet(_mean_cov(Z[kept])[1]) == -np.inf:
+                break  # ties of discrete data: stop before a degenerate subset
+            keep = kept
+            if last:
                 break
-            keep = keep[t <= 1]
         support = np.isin(np.arange(n), keep)
         distances = _mahalanobis_sq(Z, *_mean_cov(Z[support]))
         missing = smallest - support.sum()

@@ -396,3 +396,45 @@ def test_mm_test_input_checks():
         mm_test(exact, X, 1 + X[:, 0], [1])
     with pytest.raises(ValueError, match="not available"):
         mm_test(exact, X, 1 + X[:, 0], [1], test="wald")
+
+
+def _scaled_fits():
+    from robustmodels.glm import (
+        BYLogisticRegression,
+        MallowsLogisticRegression,
+        MallowsPoissonRegressor,
+        MTPoissonRegressor,
+    )
+    from robustmodels.rank import RankRegressor
+    from robustmodels.shape import ScoreMatchingRegressor
+
+    rng = np.random.default_rng(0)
+    Z = rng.normal(size=(150, 2))
+    eta = 0.3 + Z @ [0.8, -0.5]
+    binary = (rng.uniform(size=150) < 1 / (1 + np.exp(-eta))).astype(int)
+    counts, linear = rng.poisson(np.exp(eta)), 1 + Z @ [2.0, -1.0] + rng.standard_t(3, size=150)
+    return Z, [
+        (LTSRegressor(random_state=0), linear),
+        (SRegressor(random_state=0), linear),
+        (MMRegressor(random_state=0), linear),
+        (RankRegressor(), linear),
+        (ScoreMatchingRegressor(), linear),
+        (MallowsLogisticRegression(), binary),
+        (MallowsPoissonRegressor(), counts),
+        (BYLogisticRegression(), binary),
+        (MTPoissonRegressor(n_trials=50, random_state=0), counts),
+    ]
+
+
+def test_fits_are_equivariant_to_large_means_and_disparate_scales():
+    Z, cases = _scaled_fits()
+    scale = np.array([1e6, 1e-6])
+    for model, y in cases:
+        base = model.fit(Z, y)
+        coef, errors = base.coef_.copy(), getattr(base, "std_errors_", None)
+        shifted = model.fit((Z + 1e7) * scale, y)  # was rejected as singular or wrong
+        np.testing.assert_allclose(shifted.coef_ * scale, coef, rtol=1e-6, err_msg=str(model))
+        if errors is not None:
+            np.testing.assert_allclose(
+                shifted.std_errors_[-2:] * scale, errors[-2:], rtol=1e-6, err_msg=str(model)
+            )

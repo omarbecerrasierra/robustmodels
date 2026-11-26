@@ -19,7 +19,7 @@ from scipy.spatial.distance import pdist
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted, validate_data
 
-from ._validation import as_1d, check_option, is_exact_fit
+from ._validation import as_1d, check_option, is_exact_fit, standardize_columns
 from .regression import _coefficient_table
 from .scale import _count, _kth_smallest, _pairwise_rows, mad
 
@@ -116,15 +116,18 @@ class RankRegressor(RegressorMixin, BaseEstimator):
         n, p = X.shape
         if n <= p + 1:
             raise ValueError(f"needs more observations than coefficients (got n={n}, p={p + 1})")
-        centred = X - X.mean(axis=0)
+        Z, back = standardize_columns(X)  # well conditioned; the fit is affine equivariant
+        centred = Z - Z.mean(axis=0)
         if np.linalg.matrix_rank(centred) < p:
             raise ValueError("X is singular: its columns (and the intercept) are collinear")
         self._design_basis = np.linalg.qr(centred, mode="reduced")[0]
         self._response = y.copy()
-        self.coef_ = _wilcoxon_slopes(centred, y)
-        residuals = y - X @ self.coef_
-        self.intercept_ = float(np.median(residuals))
-        residuals = residuals - self.intercept_
+        slopes = _wilcoxon_slopes(centred, y)
+        residuals = y - Z @ slopes
+        intercept = float(np.median(residuals))
+        residuals = residuals - intercept
+        beta = back @ np.r_[intercept, slopes]
+        self.intercept_, self.coef_ = float(beta[0]), beta[1:]
         self.scale_ = mad(residuals)
         self.dispersion_ = _dispersion(residuals)
         self._null_dispersion, self._n_samples = _dispersion(y), n
@@ -132,9 +135,10 @@ class RankRegressor(RegressorMixin, BaseEstimator):
         self.tau_ = np.nan if exact else _tau(residuals, p)
         self.tau_s_ = np.nan if exact else _tau_s(residuals, p + 1)
         if np.isfinite(self.tau_) and self.tau_s_ > 0:
-            design = np.column_stack([np.ones(n), X])
+            design = np.column_stack([np.ones(n), Z])
             cov = self.tau_**2 * linalg.pinvh(design.T @ design)
             cov[0, 0] += (self.tau_s_**2 - self.tau_**2) / n
+            cov = back @ cov @ back.T
         else:
             cov = np.full((p + 1, p + 1), np.nan)
         self.cov_params_ = cov

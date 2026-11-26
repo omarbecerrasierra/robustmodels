@@ -254,7 +254,7 @@ def plugin_bandwidth(X, deriv_order=0):
     _check_deriv_order(deriv_order)
     Z, root = _sphere(_check_sample(X))
     criterion = _plugin_criterion(Z, deriv_order)
-    return root @ _minimize(criterion, _normal_scale(*Z.shape, deriv_order)) @ root
+    return root @ _minimize(criterion, _normal_scale(*Z.shape, deriv_order)) @ root.T
 
 
 def scv_bandwidth(X, deriv_order=0):
@@ -299,7 +299,7 @@ def scv_bandwidth(X, deriv_order=0):
     _check_deriv_order(deriv_order)
     Z, root = _sphere(_check_sample(X))
     criterion = _scv_criterion(Z, deriv_order)
-    return root @ _minimize(criterion, _normal_scale(*Z.shape, deriv_order)) @ root
+    return root @ _minimize(criterion, _normal_scale(*Z.shape, deriv_order)) @ root.T
 
 
 class KDETestResult(NamedTuple):
@@ -607,13 +607,21 @@ def _check_two_samples(X1, X2):
 
 
 def _sphere(X):
-    """``X S^-1/2`` and ``S^1/2``, with ``S`` the sample covariance and symmetric roots."""
-    values, vectors = np.linalg.eigh(np.atleast_2d(np.cov(X, rowvar=False)))
-    if values[0] <= 1e-12 * max(values[-1], 0):
+    """Rows ``A^-1 (x - mean)`` and the root ``A = D R^1/2`` of the sample covariance ``D R D``.
+
+    ``D`` holds the standard deviations and ``R`` is the correlation matrix,
+    so columns of very different scales stay accurate. ``A`` is the symmetric
+    root of ``S`` up to a rotation, which the bandwidth selectors are equivariant to.
+    """
+    centred = X - X.mean(axis=0)
+    deviations = centred.std(axis=0, ddof=1)
+    if not np.all(deviations > 0):
         raise ValueError("the sample covariance of X is singular")
-    return (X - X.mean(axis=0)) @ (vectors / np.sqrt(values)) @ vectors.T, (
-        vectors * np.sqrt(values)
-    ) @ vectors.T
+    values, vectors = np.linalg.eigh(np.atleast_2d(np.corrcoef(centred / deviations, rowvar=False)))
+    if values[0] <= 1e-12 * values[-1]:
+        raise ValueError("the sample covariance of X is singular")
+    inverse, root = (vectors / np.sqrt(values)) @ vectors.T, (vectors * np.sqrt(values)) @ vectors.T
+    return centred / deviations @ inverse, deviations[:, None] * root
 
 
 def _normal_scale(n, d, r):

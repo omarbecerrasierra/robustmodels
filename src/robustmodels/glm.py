@@ -24,10 +24,10 @@ from .covariance import MCD
 from .regression import (
     _bisquare,
     _coefficient_table,
-    _design,
     _elemental_subset,
     _huber_weights,
     _split,
+    _standardized_design,
 )
 from .scale import _bisquare_weights, _rho
 
@@ -48,15 +48,13 @@ class _RobustGLM(BaseEstimator):
         X, y = validate_data(self, X, y, dtype=np.float64, ensure_min_samples=2)
         if isinstance(self, _LogisticMixin):
             self._binary(y)
-        design = _design(X, self.fit_intercept)
-        n, p = design.shape
-        if n <= p:
-            raise ValueError(f"needs more observations than coefficients (got n={n}, p={p})")
-        if np.linalg.matrix_rank(design) < p:
-            raise ValueError("X is singular: its columns (and the intercept) are collinear")
-        return X, design, y
+        design, y, back = _standardized_design(X, y, self.fit_intercept)
+        Z = design[:, 1:] if self.fit_intercept else design
+        return Z, design, y, back
 
-    def _set_estimates(self, coef, cov, weights):
+    def _set_estimates(self, coef, cov, weights, back):
+        """Estimates on the standardized design, mapped back to the columns of ``X``."""
+        coef, cov = back @ coef, back @ cov @ back.T
         self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
         self.cov_params_ = cov
         self.std_errors_ = np.sqrt(np.diag(cov))
@@ -162,7 +160,7 @@ class _MallowsGLM(_RobustGLM):
         check_range("c", self.c, 0, np.inf, low_open=True, high_open=True)
         check_count("max_iter", self.max_iter)
         check_range("tol", self.tol, 0, np.inf, low_open=True, high_open=True)
-        X, design, y = self._validated_design(X, y)
+        X, design, y, back = self._validated_design(X, y)
         y = self._response(y)
         w = _x_weights(self.x_weights, X, design)
         offset = _offset(offset, len(y))
@@ -176,7 +174,7 @@ class _MallowsGLM(_RobustGLM):
         self.converged_ = converged
         if not converged:
             warnings.warn("Mallows estimator did not converge", RuntimeWarning, 2)
-        self._set_estimates(coef, cov, residual_weights * w)
+        self._set_estimates(coef, cov, residual_weights * w, back)
         return self
 
 
@@ -369,7 +367,7 @@ class BYLogisticRegression(_LogisticMixin, _RobustGLM):
         """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
         check_range("c", self.c, 0, np.inf, low_open=True, high_open=True)
         check_count("max_iter", self.max_iter)
-        X, design, y = self._validated_design(X, y)
+        X, design, y, back = self._validated_design(X, y)
         y = self._binary(y)
         kept = _regular_points(X) if self.weighted else np.ones(len(y), bool)
         if len(np.unique(y[kept])) < 2 or np.linalg.matrix_rank(design[kept]) < design.shape[1]:
@@ -381,7 +379,7 @@ class BYLogisticRegression(_LogisticMixin, _RobustGLM):
         if not converged:
             warnings.warn("the Bianco-Yohai estimator did not converge", RuntimeWarning, 2)
         weights = kept * _by_psi(_deviance(design @ coef, y), self.c) / np.exp(-np.sqrt(self.c))
-        self._set_estimates(coef, cov, weights)
+        self._set_estimates(coef, cov, weights, back)
         return self
 
 
@@ -483,7 +481,7 @@ class MTPoissonRegressor(_PoissonMixin, _RobustGLM):
         check_range("c", self.c, 0, np.inf, low_open=True, high_open=True)
         check_count("n_trials", self.n_trials)
         check_count("max_iter", self.max_iter)
-        X, design, y = self._validated_design(X, y)
+        X, design, y, back = self._validated_design(X, y)
         y = self._counts(y)
         w = _x_weights(self.x_weights, X, design)
         problem = _MTProblem(design, y, w, float(self.c))
@@ -504,7 +502,7 @@ class MTPoissonRegressor(_PoissonMixin, _RobustGLM):
             warnings.warn("the MT estimator did not converge", RuntimeWarning, 2)
         self.objective_ = float(fit.fun)
         weights = w * _bisquare_weights(problem.residuals(fit.x), self.c)
-        self._set_estimates(fit.x, problem.covariance(fit.x), weights)
+        self._set_estimates(fit.x, problem.covariance(fit.x), weights, back)
         return self
 
 

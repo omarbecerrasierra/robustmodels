@@ -140,3 +140,17 @@ def test_nonidentifiable_parameters_do_not_get_pseudoinverse_standard_errors():
     y = np.array([-1.0, 1.0] * 5)
     with pytest.raises(ValueError, match="Jacobian.*not locally identifiable"):
         NonlinearMRegressor(redundant, [0.0, 0.0]).fit(X, y)
+
+
+def test_parameters_of_very_different_magnitudes():
+    rng = np.random.default_rng(0)
+    X = rng.uniform(0, 5, size=(80, 1))
+
+    def decay(X, a, b):
+        return a * np.exp(-b * X[:, 0])
+
+    y = decay(X, 1e10, 0.7) * (1 + 0.03 * rng.normal(size=80))
+    small = NonlinearMRegressor(decay, [0.5, 1]).fit(X, y / 1e10)
+    large = NonlinearMRegressor(decay, [5e9, 1]).fit(X, y)
+    np.testing.assert_allclose(large.params_, small.params_ * [1e10, 1], rtol=1e-4)
+    np.testing.assert_allclose(large.std_errors_, small.std_errors_ * [1e10, 1], rtol=1e-3)

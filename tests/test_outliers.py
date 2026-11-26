@@ -171,14 +171,29 @@ def test_a_majority_on_one_point_makes_the_rest_infinitely_outlying(detector):
     np.testing.assert_array_equal(fit.predict(X), np.where(np.arange(40) < 30, 1, -1))
 
 
-def test_infinite_outlyingness_does_not_poison_the_finite_cutoff():
+@pytest.mark.parametrize("detector", DETECTORS)
+def test_zero_scales_of_discrete_data_are_ignored(detector):
+    # Ties give zero scales on many directions; robustbase skips those ratios.
     X = [[1, 0], [1, 0], [1, 2], [1, 0], [1, 2], [3, 1], [3, 1], [0, 0], [2, 0], [0, 0]]
-    fit = DirectionalOutlyingness(random_state=0).fit(X)
-    infinite = np.isinf(fit.outlyingness_)
-    assert infinite.sum() == 7
-    assert np.isfinite(fit.cutoff_)
-    np.testing.assert_array_equal(fit.predict(X), np.where(infinite, -1, 1))
+    fit = detector(random_state=0).fit(X)
+    ratios = fit._outlyingness(np.asarray(X, float) @ fit.directions_)
+    assert np.isinf(ratios).any(axis=1).sum() >= 4
+    finite = np.where(np.isfinite(ratios), ratios, -np.inf).max(axis=1)
+    np.testing.assert_array_equal(fit.outlyingness_, finite)
+    assert np.all(fit.predict(X) == 1)
+
+
+def test_likert_data_are_not_mostly_outliers():
+    rng = np.random.default_rng(0)
+    for detector in DETECTORS:
+        for _ in range(5):
+            X = rng.choice(np.arange(1.0, 6.0), size=(100, 3), p=[0.05, 0.05, 0.1, 0.2, 0.6])
+            assert np.mean(detector(random_state=0).fit(X).predict(X) == -1) < 0.25
+
+
+def test_infinite_outlyingness_does_not_poison_the_finite_cutoff():
     assert _log_cutoff(np.full(2, np.inf)) == 0
+    assert _log_cutoff(np.r_[np.full(5, np.inf), np.ones(5)]) == pytest.approx(1)
 
 
 def test_random_directions_are_reproducible():

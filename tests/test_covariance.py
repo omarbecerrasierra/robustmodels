@@ -575,3 +575,19 @@ def test_pena_prieto_robstattm_reference():
     np.testing.assert_allclose(ksd.location_, data["center"], atol=1e-12)
     scaled = np.array(data["cova"]) * mcd_consistency(10, 0.99)
     np.testing.assert_allclose(ksd.covariance_, scaled, atol=1e-12)
+
+
+def test_pena_prieto_and_stahel_donoho_on_likert_data():
+    rng = np.random.default_rng(0)
+    for _ in range(5):  # most answers 5: many tied projections with zero scale
+        X = rng.choice(np.arange(1.0, 6.0), size=(100, 3), p=[0.05, 0.05, 0.1, 0.2, 0.6])
+        assert PenaPrieto().fit(X).support_.mean() >= 0.5
+        assert np.isfinite(StahelDonoho(random_state=0).fit(X).covariance_).all()
+
+
+def test_mve_resists_forty_percent_of_outliers():
+    for seed in (3, 6):  # every candidate is refined once before ranking, as rrcov
+        rng = np.random.default_rng(seed)
+        X = rng.normal(size=(100, 4))
+        X[:40] = rng.normal(size=(40, 4)) + 8
+        assert np.linalg.norm(MVE(random_state=seed).fit(X).location_) < 0.5

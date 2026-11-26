@@ -319,3 +319,9 @@ def test_exact_depth_bounds_and_invariance():
 def test_exact_depth_ddalpha_reference(name):
     r = R["hdepth_exact"][name]
     np.testing.assert_allclose(halfspace_depth(r["x"], r["z"], exact=True), r["depth"], atol=1e-12)
+
+
+def test_depth_is_invariant_to_disparate_column_scales():
+    X = np.random.default_rng(0).normal(size=(60, 3))
+    base = halfspace_depth(X, random_state=0)
+    np.testing.assert_allclose(halfspace_depth(X * [1, 1e7, 1e-7], random_state=0), base)

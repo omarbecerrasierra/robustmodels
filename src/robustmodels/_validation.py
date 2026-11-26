@@ -63,3 +63,29 @@ def unit_exponent(x, reference=0.0, *, axis=None):
     # Leave the smallest normal observation in the normal range.
     normal_limit = np.frexp(smallest)[1] - np.finfo(float).minexp - 1
     return np.minimum(exponent, np.maximum(0, normal_limit))
+
+
+def column_scaling(X, center=True):
+    """Median (or 0 without ``center``) and power-of-two spread of each column of ``X``."""
+    location = np.median(X, axis=0) if center else np.zeros(X.shape[1])
+    deviation = np.abs(X - location)
+    spread = np.median(deviation, axis=0)
+    spread = np.where(spread > 0, spread, deviation.max(axis=0))
+    return location, np.exp2(np.round(np.log2(np.where(spread > 0, spread, 1.0))))
+
+
+def standardize_columns(X, center=True):
+    """Columns of ``X`` centred and scaled to unit spread, and the map back to ``X``.
+
+    Returns ``(Z, back)``. A fit ``[a, b]`` on ``[1, Z]`` (or ``b`` on ``Z`` without
+    ``center``) is ``back @ [a, b]`` on ``[1, X]`` (or ``X``), and a covariance ``V``
+    is ``back @ V @ back.T``. Affine equivariant fits are computed on ``Z`` because
+    large means or very different column scales make ``X`` ill-conditioned. Scales
+    are powers of two, so rescaling alone is exact.
+    """
+    location, spread = column_scaling(X, center)
+    back = np.diag(1 / spread)
+    if center:
+        corner = np.zeros((len(spread), 1))
+        back = np.block([[np.ones((1, 1)), -(location / spread)[None]], [corner, back]])
+    return (X - location) / spread, back
