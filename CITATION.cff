@@ -6,8 +6,8 @@ authors:
   - given-names: Omar
     family-names: Becerra Sierra
     orcid: "https://orcid.org/0009-0004-6376-5649"
-version: 0.6.0
-date-released: "2026-11-20"
+version: 0.6.1
+date-released: "2026-11-26"
 doi: 10.5281/zenodo.24169655
 license: BSD-3-Clause
 repository-code: "https://github.com/omarbecerrasierra/robustmodels"
