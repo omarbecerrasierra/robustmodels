@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "robustmodels"
-version = "0.6.0"
+version = "0.6.1"
 description = "Robust statistics for Python: covariance, PCA, regression, GLMs, rank methods, clustering, depth, density estimation and diagnostics."
 readme = "README.md"
 license = "BSD-3-Clause"
