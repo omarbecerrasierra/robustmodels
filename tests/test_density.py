@@ -102,7 +102,7 @@ def check_selection(X, select, criterion, r, reference):
     Z, root = density._sphere(X)
     inverse = np.linalg.inv(root)
     value = criterion(Z, r)
-    assert value(inverse @ H @ inverse) <= value(inverse @ reference @ inverse) * (1 + 1e-12)
+    assert value(inverse @ H @ inverse.T) <= value(inverse @ reference @ inverse.T) * (1 + 1e-12)
 
 
 def test_selectors_match_ks_and_reach_lower_criteria():
@@ -328,3 +328,9 @@ def test_input_checks():
     with pytest.raises(ValueError, match="variables"):
         kde_test(X2, X3)
     assert density._variance(np.zeros((2, 2)), 10, 0) == np.inf
+
+
+def test_selectors_accept_columns_of_disparate_scales():
+    D = np.diag([1e7, 1e-7])
+    for select in (plugin_bandwidth, scv_bandwidth):
+        np.testing.assert_allclose(select(X2 @ D), D @ select(X2) @ D, rtol=1e-5)

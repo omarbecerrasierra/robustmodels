@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Fit `LTSRegressor`, `SRegressor`, `MMRegressor`, `RankRegressor`,
+  `ScoreMatchingRegressor` and the four robust GLMs on centred columns scaled
+  to unit spread, and map coefficients and covariances back. Columns with
+  large means (about 1e7) were rejected as singular or gave wrong
+  coefficients and standard errors without a warning; Mallows and score
+  matching already lost accuracy at means of 1e4. `mm_test` follows.
+- `NonlinearMRegressor` no longer stops at the starting value when parameters
+  are large (about 1e10): steps are scaled by the Jacobian, and the Jacobian
+  of the standard errors uses central differences with relative steps.
+- `halfspace_depth` standardizes the columns first: with very different
+  scales the smallest column was taken as a null direction in three or more
+  dimensions, and the depth nearly doubled.
+- `plots.distance_distance` computes the classical distances from the
+  correlation matrix, which keeps columns of very different scales accurate.
+- The bandwidth selectors and the KDE tests sphere the data through the
+  correlation matrix, so valid columns of very different units are no longer
+  rejected as singular.
+- The three outlyingness detectors ignore the infinite ratios of directions
+  with zero scale, as robustbase's `adjOutlyingness`. On discrete data (Likert
+  items), more than half the projections tie on many directions, and up to
+  all observations were flagged; `StahelDonoho` then failed with a
+  `LinAlgError`.
+- `PenaPrieto` skips zero-MAD directions in the same way and stops trimming
+  before the retained observations lie on a hyperplane; it failed with a
+  `LinAlgError` on many Likert and small-integer samples.
+- `MVE` refines every candidate ellipsoid once before ranking them, as rrcov.
+  With 40% of outliers, ranking raw elemental ellipsoids often missed the
+  clean solution that R finds.
+
 ## 0.6.0 (2026-11-20)
 
 ### Added

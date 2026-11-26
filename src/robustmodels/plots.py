@@ -168,8 +168,7 @@ def distance_distance(model, X, *, id_n=3, ax=None):
     X = np.asarray(X, dtype=float)
     _check_full_rank(model)
     robust = np.sqrt(model.mahalanobis(X))
-    # EmpiricalCovariance uses divisor n; classical diagnostics use n - 1.
-    classical = np.sqrt(EmpiricalCovariance().fit(X).mahalanobis(X) * (len(X) - 1) / len(X))
+    classical = np.sqrt(_classical_distances(X))
     cut = np.sqrt(chi2.ppf(0.975, X.shape[1]))
     flagged = robust > cut
     ax = _axes(ax)
@@ -189,6 +188,17 @@ def distance_distance(model, X, *, id_n=3, ax=None):
     _title(ax, "Distance-distance plot", "large robust distances can reveal masked outliers")
     _legend(ax)
     return ax
+
+
+def _classical_distances(X):
+    """Squared Mahalanobis distances to the mean, divisor ``n - 1``, from the correlations.
+
+    Standardizing first keeps columns of very different scales (where a
+    pseudo-inverse of the covariance drops the small ones) accurate.
+    """
+    Z = (X - X.mean(axis=0)) / X.std(axis=0, ddof=1)
+    correlation = np.atleast_2d(np.corrcoef(Z, rowvar=False))
+    return np.einsum("ij,ij->i", Z, np.linalg.solve(correlation, Z.T).T)
 
 
 def tolerance_ellipse(model, X, *, feature_names=None, id_n=3, ax=None):

@@ -14,7 +14,7 @@ from scipy import optimize, stats
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_is_fitted, validate_data
 
-from ._validation import as_generator, check_count, check_range
+from ._validation import as_generator, check_count, check_range, standardize_columns
 from .covariance import h_alpha_n, mcd_consistency
 from .scale import (
     _bisquare_argument,
@@ -37,13 +37,7 @@ class _RobustRegressor(RegressorMixin, BaseEstimator):
 
     def _validated_design(self, X, y):
         X, y = validate_data(self, X, y, dtype=np.float64, y_numeric=True, ensure_min_samples=2)
-        design = _design(X, self.fit_intercept)
-        n, p = design.shape
-        if n <= p:
-            raise ValueError(f"needs more observations than coefficients (got n={n}, p={p})")
-        if np.linalg.matrix_rank(design) < p:
-            raise ValueError("X is singular: its columns (and the intercept) are collinear")
-        return design, y
+        return _standardized_design(X, y, self.fit_intercept)
 
     def predict(self, X):
         """Predicted values ``X @ coef_ + intercept_``."""
@@ -147,7 +141,7 @@ class LTSRegressor(_RobustRegressor):
     def fit(self, X, y):
         """Fit to ``X`` of shape (n_samples, n_features) and ``y``. Returns ``self``."""
         check_count("n_trials", self.n_trials)
-        design, y = self._validated_design(X, y)
+        design, y, back = self._validated_design(X, y)
         n, p = design.shape
         h = h_alpha_n(self.alpha, n, p)
         if h == n:
@@ -156,8 +150,9 @@ class LTSRegressor(_RobustRegressor):
             subset = _fast_lts(design, y, h, self.n_trials, as_generator(self.random_state))
         self.h_ = h
         coef = self._raw_fit(design, y, subset)
+        self.raw_intercept_, self.raw_coef_ = _split(back @ coef, self.fit_intercept)
         coef, self.scale_, self.support_ = self._reweighted_fit(design, y, coef)
-        self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
+        self.intercept_, self.coef_ = _split(back @ coef, self.fit_intercept)
         return self
 
     def _raw_fit(self, design, y, subset):
@@ -170,7 +165,6 @@ class LTSRegressor(_RobustRegressor):
             trimmed = np.partition(residuals**2, self.h_ - 1)[: self.h_]
             scale = np.sqrt(trimmed.mean() * mcd_consistency(1, self.h_ / n))
             scale *= self._small_sample(p, n, False)
-        self.raw_intercept_, self.raw_coef_ = _split(coef, self.fit_intercept)
         self.raw_scale_ = float(scale)
         self.raw_support_ = np.isin(np.arange(n), subset)
         return coef
@@ -297,13 +291,13 @@ class SRegressor(_RobustRegressor):
         for name in ("n_trials", "n_best", "k_steps", "max_iter"):
             check_count(name, getattr(self, name))
         c = _tuning_for_breakdown(self.breakdown)
-        design, y = self._validated_design(X, y)
+        design, y, back = self._validated_design(X, y)
         steps = (self.n_trials, self.n_best, self.k_steps, self.max_iter)
         fit = _fast_s(design, y, c, self.breakdown, steps, self.random_state)
         scale, coef, self.n_iter_, converged = fit
         _warn(scale, converged)
         self.scale_ = scale
-        self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
+        self.intercept_, self.coef_ = _split(back @ coef, self.fit_intercept)
         return self
 
 
@@ -405,10 +399,10 @@ class MMRegressor(_RobustRegressor):
                 "efficiency is too low for this breakdown: MM requires the final "
                 "bisquare tuning constant >= the initial one"
             )
-        design, y = self._validated_design(X, y)
+        design, y, back = self._validated_design(X, y)
         steps = (self.n_trials, 5, 2, self.max_iter)
         scale, coef, _, converged = _fast_s(design, y, c0, self.breakdown, steps, self.random_state)
-        self.s_intercept_, self.s_coef_ = _split(coef, self.fit_intercept)
+        self.s_intercept_, self.s_coef_ = _split(back @ coef, self.fit_intercept)
         _warn(scale, converged)
         self.n_iter_ = 0
         n, p = design.shape
@@ -420,13 +414,15 @@ class MMRegressor(_RobustRegressor):
                 warnings.warn("MM did not converge within max_iter", RuntimeWarning, 2)
             residuals = y - design @ coef
             cov = _mm_covariance(design, residuals, s_residuals, scale, (c0, c), self.breakdown)
+        self._training_design, self._training_response = design.copy(), y.copy()
+        self._training_coef = coef
+        coef, cov = back @ coef, back @ cov @ back.T
         self.scale_ = scale
         self.intercept_, self.coef_ = _split(coef, self.fit_intercept)
         self.cov_params_ = cov
         self.std_errors_ = np.sqrt(np.diag(cov))
         self.t_values_ = coef / self.std_errors_
         self.p_values_ = 2 * stats.t.sf(np.abs(self.t_values_), n - p)
-        self._training_design, self._training_response = design.copy(), y.copy()
         return self
 
     def summary(self, feature_names=None):
@@ -523,7 +519,7 @@ def mm_test(model, X, y, columns, *, test="deviance"):
     ):
         raise ValueError(f"columns must be a nonempty selection of 0..{p - 1}")
     columns = np.unique(columns).astype(int)
-    design = _design(X, model.fit_intercept)
+    design = _standardized_design(X, y, model.fit_intercept)[0]
     if not np.array_equal(design, model._training_design) or not np.array_equal(
         y, model._training_response
     ):
@@ -540,6 +536,7 @@ def mm_test(model, X, y, columns, *, test="deviance"):
         if not model.scale_ > 0:
             raise ValueError("the scale is 0 (exact fit): the deviance test is not defined")
         c, scale = _tuning_for_efficiency(model.efficiency), model.scale_
+        coef = model._training_coef  # on the standardized design
         full = (y - design @ coef) / scale
         reduced = y / scale
         if kept.size:
@@ -650,7 +647,11 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
                 converged = True
                 break
             root = np.sqrt(_huber_weights(current / scale, self.c))
-            fit = optimize.least_squares(lambda b: root * residuals(b), params)  # noqa: B023
+            fit = optimize.least_squares(
+                lambda b: root * residuals(b),  # noqa: B023
+                params,
+                x_scale="jac",  # parameters of very different magnitudes
+            )
             if not fit.success:
                 raise RuntimeError(f"nonlinear least squares failed: {fit.message}")
             params = fit.x
@@ -664,7 +665,7 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
         scale = float(np.median(np.abs(current)) / 0.6745)
         self.params_, self.scale_, self.n_iter_ = params, scale, iteration
         self.converged_ = converged
-        jacobian = optimize.approx_fprime(params, lambda b: self._evaluate(X, b))
+        jacobian = _jacobian(lambda b: self._evaluate(X, b), params)
         if np.linalg.matrix_rank(jacobian) < p:
             raise ValueError(
                 "model Jacobian is rank deficient; parameters are not locally identifiable"
@@ -700,6 +701,17 @@ class NonlinearMRegressor(RegressorMixin, BaseEstimator):
         return self._evaluate(X, self.params_)
 
 
+def _jacobian(f, params):
+    """Central differences with steps relative to the magnitude of each parameter."""
+    steps = np.cbrt(np.finfo(float).eps) * np.where(params != 0, np.abs(params), 1.0)
+    columns = []
+    for j, step in enumerate(steps):
+        shift = np.zeros_like(params)
+        shift[j] = step
+        columns.append((f(params + shift) - f(params - shift)) / (2 * step))
+    return np.column_stack(columns)
+
+
 def _huber_weights(t, c):
     return np.minimum(1, c / np.maximum(np.abs(t), 1e-300))
 
@@ -726,6 +738,18 @@ def _coefficient_table(model, feature_names, statistic, values):
 def _design(X, fit_intercept):
     """``X`` with a leading column of ones when fitting an intercept."""
     return np.column_stack([np.ones(len(X)), X]) if fit_intercept else X
+
+
+def _standardized_design(X, y, fit_intercept):
+    """Design of standardized columns, ``y`` and the map of coefficients back to ``X``."""
+    Z, back = standardize_columns(X, fit_intercept)
+    design = _design(Z, fit_intercept)
+    n, p = design.shape
+    if n <= p:
+        raise ValueError(f"needs more observations than coefficients (got n={n}, p={p})")
+    if np.linalg.matrix_rank(design) < p:
+        raise ValueError("X is singular: its columns (and the intercept) are collinear")
+    return design, y, back
 
 
 def _split(coef, fit_intercept):

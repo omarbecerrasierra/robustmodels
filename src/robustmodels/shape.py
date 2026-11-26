@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.isotonic import isotonic_regression
 from sklearn.utils.validation import check_is_fitted, validate_data
 
-from ._validation import as_1d, is_exact_fit
+from ._validation import as_1d, is_exact_fit, standardize_columns
 from .rank import _l1_fit
 from .regression import _coefficient_table
 from .scale import mad
@@ -206,6 +206,7 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
         n, p = X.shape
         if n <= p + 1:
             raise ValueError(f"needs more observations than coefficients (got n={n}, p={p + 1})")
+        X, back = standardize_columns(X)  # well conditioned; the fit is affine equivariant
         mean = X.mean(axis=0)
         if np.linalg.matrix_rank(X - mean) < p:
             raise ValueError("X is singular: its columns (and the intercept) are collinear")
@@ -225,7 +226,6 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
                 slopes = _minimize_loss(X - mean, y - offset, beta[1:], score)
                 fitted = y - offset - (X - mean) @ slopes  # the residuals the score was fitted to
                 beta = np.r_[np.median(y - X @ slopes), slopes]
-        self.intercept_, self.coef_ = float(beta[0]), beta[1:]
         self.scale_ = mad(y - design @ beta)
         self.information_ = 0.0 if score is None else float(np.mean(score(fitted)[0] ** 2))
         self.score_knots_ = np.empty(0) if score is None else score.knots
@@ -240,6 +240,8 @@ class ScoreMatchingRegressor(RegressorMixin, BaseEstimator):
             cov = np.empty((p + 1, p + 1))
             cov[0, 0], cov[1:, 1:] = tau / n + mean @ slopes @ mean, slopes
             cov[0, 1:] = cov[1:, 0] = -slopes @ mean
+        beta, cov = back @ beta, back @ cov @ back.T
+        self.intercept_, self.coef_ = float(beta[0]), beta[1:]
         self.cov_params_ = cov
         self.std_errors_ = np.sqrt(np.diag(cov))
         self.z_values_ = beta / self.std_errors_

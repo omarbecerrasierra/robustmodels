@@ -10,7 +10,7 @@ from scipy.spatial import ConvexHull, HalfspaceIntersection
 from sklearn.utils import Bunch
 from sklearn.utils.validation import check_array, check_X_y
 
-from ._validation import as_generator, check_count, check_range
+from ._validation import as_generator, check_count, check_range, column_scaling
 from .outliers import _directions, _merge_ties
 
 __all__ = ["bagplot_stats", "halfspace_depth", "halfspace_median", "regression_depth"]
@@ -82,6 +82,8 @@ def halfspace_depth(X, points=None, *, exact=False, n_directions=None, random_st
         raise ValueError(f"points has {points.shape[1]} features, X has {p}")
     if n_directions is not None:
         check_count("n_directions", n_directions)
+    location, spread = column_scaling(X)  # the depth is affine invariant
+    X, points = (X - location) / spread, (points - location) / spread
     if p == 1:
         return _depth_1d(np.sort(X[:, 0]), points[:, 0]) / n
     if p == 2:

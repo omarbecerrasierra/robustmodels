@@ -56,7 +56,7 @@ class _ProjectionOutlyingness(OutlierMixin, BaseEstimator):
         """Outlyingness of each row of ``X``: the largest standardized projection."""
         check_is_fitted(self)
         X = validate_data(self, X, dtype=np.float64, reset=False)
-        return self._outlyingness(X @ self.directions_).max(axis=1)
+        return _largest_ratio(*self._distances(X @ self.directions_))
 
     def score_samples(self, X):
         """Projection depth in [0, 1]; higher is more central, 0 for infinite outlyingness."""
@@ -133,8 +133,8 @@ class StahelDonohoOutlyingness(_ProjectionOutlyingness):
     def _fit_projections(self, projections):
         self.centers_, self.scales_ = _median_and_mad(projections)
 
-    def _outlyingness(self, projections):
-        return _ratio(np.abs(projections - self.centers_), self.scales_)
+    def _distances(self, projections):
+        return np.abs(projections - self.centers_), self.scales_
 
 
 class AdjustedOutlyingness(_ProjectionOutlyingness):
@@ -203,10 +203,9 @@ class AdjustedOutlyingness(_ProjectionOutlyingness):
         whiskers = [_whiskers(column) for column in (projections - self.centers_).T]
         self.lower_whiskers_, self.upper_whiskers_ = np.array(whiskers).T
 
-    def _outlyingness(self, projections):
+    def _distances(self, projections):
         y = projections - self.centers_
-        whisker = np.where(y > 0, self.upper_whiskers_, self.lower_whiskers_)
-        return _ratio(np.abs(y), whisker)
+        return np.abs(y), np.where(y > 0, self.upper_whiskers_, self.lower_whiskers_)
 
 
 class DirectionalOutlyingness(_ProjectionOutlyingness):
@@ -273,9 +272,9 @@ class DirectionalOutlyingness(_ProjectionOutlyingness):
         self.lower_scales_ = _half_scale(self.centers_ - ordered[:half])
         self.upper_scales_ = _half_scale(ordered[-half:] - self.centers_)
 
-    def _outlyingness(self, projections):
+    def _distances(self, projections):
         y = projections - self.centers_
-        return _ratio(np.abs(y), np.where(y > 0, self.upper_scales_, self.lower_scales_))
+        return np.abs(y), np.where(y > 0, self.upper_scales_, self.lower_scales_)
 
 
 def _half_scale(deviations):
@@ -345,6 +344,21 @@ def _ratio(distance, scale):
     """``distance / scale``: 0 where the distance is 0, infinite where only the scale is."""
     with np.errstate(divide="ignore", invalid="ignore"):
         return np.where(distance == 0, 0.0, distance / scale)
+
+
+def _largest_ratio(distance, scale):
+    """Largest ``distance / scale`` of each row over the columns with a positive scale.
+
+    A zero scale (most projections tied, as with discrete data) would make the
+    observations off the tie infinitely outlying. As robustbase's
+    ``adjOutlyingness``, such columns are ignored. A row without a positive
+    scale is 0 on all ties and infinite off any of them.
+    """
+    positive = np.broadcast_to(scale > 0, distance.shape)
+    ratios = np.divide(distance, scale, out=np.zeros_like(distance), where=positive)
+    largest = np.max(ratios, axis=1, where=positive, initial=0.0)
+    off_tie = np.where(np.any(distance > 0, axis=1), np.inf, 0.0)
+    return np.where(positive.any(axis=1), largest, off_tie)
 
 
 def _whiskers(y):
